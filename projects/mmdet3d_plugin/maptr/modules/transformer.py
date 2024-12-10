@@ -64,8 +64,8 @@ class MapTRPerceptionTransformer(BaseModule):
         if modality == 'fusion':
             self.fuser = build_fuser(fuser) #TODO
         self.use_attn_bev = encoder['type'] == 'BEVFormerEncoder'
-        self.encoder = build_transformer_layer_sequence(encoder)
-        self.decoder = build_transformer_layer_sequence(decoder)
+        self.encoder = build_transformer_layer_sequence(encoder) # BEVFormerEncoder
+        self.decoder = build_transformer_layer_sequence(decoder) # MapTRDecoder
         self.embed_dims = embed_dims
         self.num_feature_levels = num_feature_levels
         self.num_cams = num_cams
@@ -85,9 +85,9 @@ class MapTRPerceptionTransformer(BaseModule):
     def init_layers(self):
         """Initialize layers of the Detr3DTransformer."""
         self.level_embeds = nn.Parameter(torch.Tensor(
-            self.num_feature_levels, self.embed_dims))
+            self.num_feature_levels, self.embed_dims))    # (L, 256)
         self.cams_embeds = nn.Parameter(
-            torch.Tensor(self.num_cams, self.embed_dims))
+            torch.Tensor(self.num_cams, self.embed_dims)) # (6, 256)
         self.reference_points = nn.Linear(self.embed_dims, 2) # TODO, this is a hack
         self.can_bus_mlp = nn.Sequential(
             nn.Linear(self.len_can_bus, self.embed_dims // 2),
@@ -126,9 +126,9 @@ class MapTRPerceptionTransformer(BaseModule):
             bev_pos=None,
             prev_bev=None,
             **kwargs):
-        bs = mlvl_feats[0].size(0)
-        bev_queries = bev_queries.unsqueeze(1).repeat(1, bs, 1)
-        bev_pos = bev_pos.flatten(2).permute(2, 0, 1)
+        bs = mlvl_feats[0].size(0)                              # (L=1, B, 6, 256, 15 X 25)
+        bev_queries = bev_queries.unsqueeze(1).repeat(1, bs, 1) # (200*100, B, 256)
+        bev_pos = bev_pos.flatten(2).permute(2, 0, 1)           # (200*100, B, 256)
 
         # obtain rotation angle and shift with ego motion
         delta_x = np.array([each['can_bus'][0]
@@ -168,24 +168,24 @@ class MapTRPerceptionTransformer(BaseModule):
 
         # add can bus signals
         can_bus = bev_queries.new_tensor(
-            [each['can_bus'] for each in kwargs['img_metas']])  # [:, :]
-        can_bus = self.can_bus_mlp(can_bus[:, :self.len_can_bus])[None, :, :]
-        bev_queries = bev_queries + can_bus * self.use_can_bus
+            [each['can_bus'] for each in kwargs['img_metas']])                # (B, 18)
+        can_bus = self.can_bus_mlp(can_bus[:, :self.len_can_bus])[None, :, :] # (1, B, 256)
+        bev_queries = bev_queries + can_bus * self.use_can_bus                # (200*100, B, 256)
 
         feat_flatten = []
         spatial_shapes = []
-        for lvl, feat in enumerate(mlvl_feats):
+        for lvl, feat in enumerate(mlvl_feats): # (L, B, 6, 256, 15 X 25)
             bs, num_cam, c, h, w = feat.shape
             spatial_shape = (h, w)
-            feat = feat.flatten(3).permute(1, 0, 3, 2)
+            feat = feat.flatten(3).permute(1, 0, 3, 2) # (6, B, 15*25, 256)
             if self.use_cams_embeds:
-                feat = feat + self.cams_embeds[:, None, None, :].to(feat.dtype)
+                feat = feat + self.cams_embeds[:, None, None, :].to(feat.dtype)  # (6, B, 15*25, 256)
             feat = feat + self.level_embeds[None,
-                                            None, lvl:lvl + 1, :].to(feat.dtype)
+                                            None, lvl:lvl + 1, :].to(feat.dtype) # (6, B, 15*25, 256)
             spatial_shapes.append(spatial_shape)
             feat_flatten.append(feat)
 
-        feat_flatten = torch.cat(feat_flatten, 2)
+        feat_flatten = torch.cat(feat_flatten, 2) # (6, B, 15*25+..., 256)
         spatial_shapes = torch.as_tensor(
             spatial_shapes, dtype=torch.long, device=bev_pos.device)
         level_start_index = torch.cat((spatial_shapes.new_zeros(
@@ -331,12 +331,12 @@ class MapTRPerceptionTransformer(BaseModule):
         query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)
         query = query.unsqueeze(0).expand(bs, -1, -1)
         reference_points = self.reference_points(query_pos)
-        reference_points = reference_points.sigmoid()
+        reference_points = reference_points.sigmoid() # (B, 50*20, 256)
         init_reference_out = reference_points
 
-        query = query.permute(1, 0, 2)
-        query_pos = query_pos.permute(1, 0, 2)
-        bev_embed = bev_embed.permute(1, 0, 2)
+        query = query.permute(1, 0, 2)         # (50*20, B, 256)
+        query_pos = query_pos.permute(1, 0, 2) # (50*20, B, 256)
+        bev_embed = bev_embed.permute(1, 0, 2) # (50*20, B, 256)
 
         inter_states, inter_references = self.decoder(
             query=query,

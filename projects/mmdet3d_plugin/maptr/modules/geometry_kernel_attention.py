@@ -62,16 +62,16 @@ class GeometrySptialCrossAttention(BaseModule):
 
     @force_fp32(apply_to=('query', 'key', 'value', 'query_pos', 'reference_points_cam'))
     def forward(self,
-                query,
-                key,
-                value,
+                query, # (B, 200*100, 256)
+                key,   # (6, 15*25, B, 256)
+                value, # (6, 15*25, B, 256)
                 residual=None,
                 query_pos=None,
                 key_padding_mask=None,
                 reference_points=None,
                 spatial_shapes=None,
-                reference_points_cam=None,
-                bev_mask=None,
+                reference_points_cam=None, # (6, B, 200*100, Z=4, 2)
+                bev_mask=None,             # (6, B, 200*100, Z=4)
                 level_start_index=None,
                 flag='encoder',
                 **kwargs):
@@ -145,9 +145,9 @@ class GeometrySptialCrossAttention(BaseModule):
         num_cams, l, bs, embed_dims = key.shape
 
         key = key.permute(2, 0, 1, 3).reshape(
-            bs * self.num_cams, l, self.embed_dims)
+            bs * self.num_cams, l, self.embed_dims) # (6B, 15*25, 256)
         value = value.permute(2, 0, 1, 3).reshape(
-            bs * self.num_cams, l, self.embed_dims)
+            bs * self.num_cams, l, self.embed_dims) # (6B, 15*25, 256)
 
         queries = self.attention(query=queries_rebatch.view(bs*self.num_cams, max_len, self.embed_dims), key=key, value=value,
                                  reference_points=reference_points_rebatch.view(bs*self.num_cams, max_len, D, 2), spatial_shapes=spatial_shapes,
@@ -354,16 +354,16 @@ class GeometryKernelAttention(BaseModule):
         return output.view(bs, num_queries, -1)
 
     def forward(self,
-                query,
+                query,      # (6B, 200*100, 256)
                 key=None,
-                value=None,
+                value=None, # (6B, 15*25, 256)
                 identity=None,
                 query_pos=None,
                 key_padding_mask=None,
-                reference_points=None,
+                reference_points=None, # (6B, 200*100, Z=4, 2)
                 spatial_shapes=None,
                 level_start_index=None,
-                **kwargs):
+                **kwargs):  
         """Forward Function of MultiScaleDeformAttention.
         Args:
             query (Tensor): Query of Transformer with shape

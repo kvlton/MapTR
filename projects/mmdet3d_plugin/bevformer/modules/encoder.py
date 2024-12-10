@@ -64,14 +64,14 @@ class BEVFormerEncoder(TransformerLayerSequence):
         # reference points in 3D space, used in spatial cross-attention (SCA)
         if dim == '3d':
             zs = torch.linspace(0.5, Z - 0.5, num_points_in_pillar, dtype=dtype,
-                                device=device).view(-1, 1, 1).expand(num_points_in_pillar, H, W) / Z
+                                device=device).view(-1, 1, 1).expand(num_points_in_pillar, H, W) / Z # (Z=4, 200, 100)
             xs = torch.linspace(0.5, W - 0.5, W, dtype=dtype,
-                                device=device).view(1, 1, W).expand(num_points_in_pillar, H, W) / W
+                                device=device).view(1, 1, W).expand(num_points_in_pillar, H, W) / W  # (Z=4, 200, 100)
             ys = torch.linspace(0.5, H - 0.5, H, dtype=dtype,
-                                device=device).view(1, H, 1).expand(num_points_in_pillar, H, W) / H
-            ref_3d = torch.stack((xs, ys, zs), -1)
-            ref_3d = ref_3d.permute(0, 3, 1, 2).flatten(2).permute(0, 2, 1)
-            ref_3d = ref_3d[None].repeat(bs, 1, 1, 1)
+                                device=device).view(1, H, 1).expand(num_points_in_pillar, H, W) / H  # (Z=4, 200, 100)
+            ref_3d = torch.stack((xs, ys, zs), -1)                          # (Z=4, 200, 100, 3)
+            ref_3d = ref_3d.permute(0, 3, 1, 2).flatten(2).permute(0, 2, 1) # (Z=4, 200*100, 3)
+            ref_3d = ref_3d[None].repeat(bs, 1, 1, 1)                       # (B, Z=4, 200*100, 3)
             return ref_3d
 
         # reference points on 2D bev plane, used in temporal self-attention (TSA).
@@ -82,23 +82,25 @@ class BEVFormerEncoder(TransformerLayerSequence):
                 torch.linspace(
                     0.5, W - 0.5, W, dtype=dtype, device=device)
             )
-            ref_y = ref_y.reshape(-1)[None] / H
-            ref_x = ref_x.reshape(-1)[None] / W
-            ref_2d = torch.stack((ref_x, ref_y), -1)
-            ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
+            ref_y = ref_y.reshape(-1)[None] / H           # (1, 200*100)
+            ref_x = ref_x.reshape(-1)[None] / W           # (1, 200*100)
+            ref_2d = torch.stack((ref_x, ref_y), -1)      # (1, 200*100, 2)
+            ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2) # (B, 200*100, 1, 2)
             return ref_2d
 
     # This function must use fp32!!!
     @force_fp32(apply_to=('reference_points', 'img_metas'))
     def point_sampling(self, reference_points, pc_range,  img_metas):
 
+        # 获取相机外参lidar2img
         lidar2img = []
         for img_meta in img_metas:
             lidar2img.append(img_meta['lidar2img'])
         lidar2img = np.asarray(lidar2img)
-        lidar2img = reference_points.new_tensor(lidar2img)  # (B, N, 4, 4)
-        reference_points = reference_points.clone()
+        lidar2img = reference_points.new_tensor(lidar2img)  # (B, 6, 4 X 4)
+        reference_points = reference_points.clone()         # (B, Z=4, 200*100, 3)
 
+        # ref_3d映射到自车坐标系下
         reference_points[..., 0:1] = reference_points[..., 0:1] * \
             (pc_range[3] - pc_range[0]) + pc_range[0]
         reference_points[..., 1:2] = reference_points[..., 1:2] * \
@@ -109,27 +111,32 @@ class BEVFormerEncoder(TransformerLayerSequence):
         reference_points = torch.cat(
             (reference_points, torch.ones_like(reference_points[..., :1])), -1)
 
-        reference_points = reference_points.permute(1, 0, 2, 3)
+        reference_points = reference_points.permute(1, 0, 2, 3) # (Z=4, B, 200*100, 4)
         D, B, num_query = reference_points.size()[:3]
         num_cam = lidar2img.size(1)
 
+    
+        # 转到相机坐标系
         reference_points = reference_points.view(
-            D, B, 1, num_query, 4).repeat(1, 1, num_cam, 1, 1).unsqueeze(-1)
+            D, B, 1, num_query, 4).repeat(1, 1, num_cam, 1, 1).unsqueeze(-1) # (Z=4, B, 6, 200*100, 4 X 1)
 
         lidar2img = lidar2img.view(
-            1, B, num_cam, 1, 4, 4).repeat(D, 1, 1, num_query, 1, 1)
+            1, B, num_cam, 1, 4, 4).repeat(D, 1, 1, num_query, 1, 1)         # (Z=4, B, 6, 200*100, 4 X 4)
 
         reference_points_cam = torch.matmul(lidar2img.to(torch.float32),
-                                            reference_points.to(torch.float32)).squeeze(-1)
+                                            reference_points.to(torch.float32)).squeeze(-1) # (Z=4, B, 6, 200*100, 4)
         eps = 1e-5
 
+        # 转到归一化平面
         bev_mask = (reference_points_cam[..., 2:3] > eps)
         reference_points_cam = reference_points_cam[..., 0:2] / torch.maximum(
             reference_points_cam[..., 2:3], torch.ones_like(reference_points_cam[..., 2:3]) * eps)
 
+        # 转到像素平面
         reference_points_cam[..., 0] /= img_metas[0]['img_shape'][0][1]
-        reference_points_cam[..., 1] /= img_metas[0]['img_shape'][0][0]
+        reference_points_cam[..., 1] /= img_metas[0]['img_shape'][0][0] # (Z=4, B, 6, 200*100, 2)
 
+        # 过滤掉不在图像内的点
         bev_mask = (bev_mask & (reference_points_cam[..., 1:2] > 0.0)
                     & (reference_points_cam[..., 1:2] < 1.0)
                     & (reference_points_cam[..., 0:1] < 1.0)
@@ -140,20 +147,20 @@ class BEVFormerEncoder(TransformerLayerSequence):
             bev_mask = bev_mask.new_tensor(
                 np.nan_to_num(bev_mask.cpu().numpy()))
 
-        reference_points_cam = reference_points_cam.permute(2, 1, 3, 0, 4)
-        bev_mask = bev_mask.permute(2, 1, 3, 0, 4).squeeze(-1)
+        reference_points_cam = reference_points_cam.permute(2, 1, 3, 0, 4) # (6, B, 200*100, Z=4, 2)
+        bev_mask = bev_mask.permute(2, 1, 3, 0, 4).squeeze(-1)             # (6, B, 200*100, Z=4)
 
         return reference_points_cam, bev_mask
 
     @auto_fp16()
     def forward(self,
-                bev_query,
-                key,
-                value,
+                bev_query,    # (200*100, B, 256)
+                key,          # (6, 15*25, B, 256)
+                value,        # (6, 15*25, B, 256)
                 *args,
                 bev_h=None,
                 bev_w=None,
-                bev_pos=None,
+                bev_pos=None, # (200*100, B, 256)
                 spatial_shapes=None,
                 level_start_index=None,
                 valid_ratios=None,
@@ -182,13 +189,15 @@ class BEVFormerEncoder(TransformerLayerSequence):
         output = bev_query
         intermediate = []
 
+        # reference points in 3D space, used in spatial cross-attention (SCA)
         ref_3d = self.get_reference_points(
             bev_h, bev_w, self.pc_range[5]-self.pc_range[2], self.num_points_in_pillar, dim='3d', bs=bev_query.size(1),  device=bev_query.device, dtype=bev_query.dtype)
+        # reference points on 2D bev plane, used in temporal self-attention (TSA).
         ref_2d = self.get_reference_points(
             bev_h, bev_w, dim='2d', bs=bev_query.size(1), device=bev_query.device, dtype=bev_query.dtype)
 
         reference_points_cam, bev_mask = self.point_sampling(
-            ref_3d, self.pc_range, kwargs['img_metas'])
+            ref_3d, self.pc_range, kwargs['img_metas']) # (6, B, 200*100, Z=4, 2)
 
         # bug: this code should be 'shift_ref_2d = ref_2d.clone()', we keep this bug for reproducing our results in paper.
         # shift_ref_2d = ref_2d  # .clone()
@@ -196,9 +205,9 @@ class BEVFormerEncoder(TransformerLayerSequence):
         shift_ref_2d += shift[:, None, None, :]
 
         # (num_query, bs, embed_dims) -> (bs, num_query, embed_dims)
-        bev_query = bev_query.permute(1, 0, 2)
-        bev_pos = bev_pos.permute(1, 0, 2)
-        bs, len_bev, num_bev_level, _ = ref_2d.shape
+        bev_query = bev_query.permute(1, 0, 2) # (B, 200*100, 256)
+        bev_pos = bev_pos.permute(1, 0, 2)     # (B, 200*100, 256)
+        bs, len_bev, num_bev_level, _ = ref_2d.shape # (B, 200*100, 1, 2)
         if prev_bev is not None:
             prev_bev = prev_bev.permute(1, 0, 2)
             prev_bev = torch.stack(
@@ -207,7 +216,7 @@ class BEVFormerEncoder(TransformerLayerSequence):
                 bs*2, len_bev, num_bev_level, 2)
         else:
             hybird_ref_2d = torch.stack([ref_2d, ref_2d], 1).reshape(
-                bs*2, len_bev, num_bev_level, 2)
+                bs*2, len_bev, num_bev_level, 2) # (2B, 200*100, 1, 2)
 
         for lid, layer in enumerate(self.layers):
             output = layer(
@@ -283,20 +292,20 @@ class BEVFormerLayer(MyCustomBaseTransformerLayer):
             ['self_attn', 'norm', 'cross_attn', 'ffn'])
 
     def forward(self,
-                query,
-                key=None,
-                value=None,
-                bev_pos=None,
+                query,        # (B, 200*100, 256)
+                key=None,     # (6, 15*25, B, 256)
+                value=None,   # (6, 15*25, B, 256)
+                bev_pos=None, # (B, 200*100, 256)
                 query_pos=None,
                 key_pos=None,
                 attn_masks=None,
                 query_key_padding_mask=None,
                 key_padding_mask=None,
-                ref_2d=None,
-                ref_3d=None,
+                ref_2d=None,  # (2B, 200*100, 1, 2)
+                ref_3d=None,  # (B, Z=4, 200*100, 3)
                 bev_h=None,
                 bev_w=None,
-                reference_points_cam=None,
+                reference_points_cam=None, # (6, B, 200*100, Z=4, 2)
                 mask=None,
                 spatial_shapes=None,
                 level_start_index=None,

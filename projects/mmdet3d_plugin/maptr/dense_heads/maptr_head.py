@@ -176,7 +176,7 @@ class MapTRHead(DETRHead):
         if not self.as_two_stage:
             if self.bev_encoder_type == 'BEVFormerEncoder':
                 self.bev_embedding = nn.Embedding(
-                    self.bev_h * self.bev_w, self.embed_dims)
+                    self.bev_h * self.bev_w, self.embed_dims) # (200*100, 256)
             else:
                 self.bev_embedding = None
             if self.query_embed_type == 'all_pts':
@@ -184,8 +184,8 @@ class MapTRHead(DETRHead):
                                                     self.embed_dims * 2)
             elif self.query_embed_type == 'instance_pts':
                 self.query_embedding = None
-                self.instance_embedding = nn.Embedding(self.num_vec, self.embed_dims * 2)
-                self.pts_embedding = nn.Embedding(self.num_pts_per_vec, self.embed_dims * 2)
+                self.instance_embedding = nn.Embedding(self.num_vec, self.embed_dims * 2)    # (50, 512)
+                self.pts_embedding = nn.Embedding(self.num_pts_per_vec, self.embed_dims * 2) # (20, 512)
 
     def init_weights(self):
         """Initialize weights of the DeformDETR head."""
@@ -223,15 +223,14 @@ class MapTRHead(DETRHead):
         if self.query_embed_type == 'all_pts':
             object_query_embeds = self.query_embedding.weight.to(dtype)
         elif self.query_embed_type == 'instance_pts':
-            pts_embeds = self.pts_embedding.weight.unsqueeze(0)
-            instance_embeds = self.instance_embedding.weight.unsqueeze(1)
-            object_query_embeds = (pts_embeds + instance_embeds).flatten(0, 1).to(dtype)
+            pts_embeds = self.pts_embedding.weight.unsqueeze(0)                          # (1, 20, 512)
+            instance_embeds = self.instance_embedding.weight.unsqueeze(1)                # (50, 1, 512)
+            object_query_embeds = (pts_embeds + instance_embeds).flatten(0, 1).to(dtype) # (50*20, 512)
         if self.bev_embedding is not None:
-            bev_queries = self.bev_embedding.weight.to(dtype)
-
+            bev_queries = self.bev_embedding.weight.to(dtype)        # (200*100, 256)
             bev_mask = torch.zeros((bs, self.bev_h, self.bev_w),
-                                device=bev_queries.device).to(dtype)
-            bev_pos = self.positional_encoding(bev_mask).to(dtype)
+                                device=bev_queries.device).to(dtype) # (B, 200, 100)
+            bev_pos = self.positional_encoding(bev_mask).to(dtype)   # (B, 256, 200, 100)
         else:
             bev_queries = None
             bev_mask = None
@@ -265,7 +264,7 @@ class MapTRHead(DETRHead):
                 cls_branches=self.cls_branches if self.as_two_stage else None,
                 img_metas=img_metas,
                 prev_bev=prev_bev
-        )
+            )
 
         bev_embed, hs, init_reference, inter_references = outputs
         hs = hs.permute(0, 2, 1, 3)
@@ -347,12 +346,12 @@ class MapTRHead(DETRHead):
             raise NotImplementedError
         return bbox, pts_reshape
     def _get_target_single(self,
-                           cls_score,
-                           bbox_pred,
-                           pts_pred,
-                           gt_labels,
-                           gt_bboxes,
-                           gt_shifts_pts,
+                           cls_score, # (50, 3)
+                           bbox_pred, # (50, 4)
+                           pts_pred,  # (50, 20， 2)
+                           gt_labels,     # (m)
+                           gt_bboxes,     # (m, 4)
+                           gt_shifts_pts, # (m, 19, 20, 2)
                            gt_bboxes_ignore=None):
         """"Compute regression and classification targets for one image.
         Outputs from a single decoder layer of a single feature level are used.
@@ -485,12 +484,12 @@ class MapTRHead(DETRHead):
                 num_total_pos, num_total_neg)
 
     def loss_single(self,
-                    cls_scores,
-                    bbox_preds,
-                    pts_preds,
-                    gt_bboxes_list,
-                    gt_labels_list,
-                    gt_shifts_pts_list,
+                    cls_scores, # (B, 50, 3)
+                    bbox_preds, # (B, 50, 4)
+                    pts_preds,  # (B, 50, 20, 2)
+                    gt_bboxes_list,     # (B, m, 4)
+                    gt_labels_list,     # (B, m)
+                    gt_shifts_pts_list, # (B, m, 19, 20, 2)
                     gt_bboxes_ignore_list=None):
         """"Loss function for outputs from a single decoder layer of a single
         feature level.
@@ -524,15 +523,15 @@ class MapTRHead(DETRHead):
          pts_targets_list, pts_weights_list,
          num_total_pos, num_total_neg) = cls_reg_targets
         # import pdb;pdb.set_trace()
-        labels = torch.cat(labels_list, 0)
+        labels = torch.cat(labels_list, 0)               # (B*50)
         label_weights = torch.cat(label_weights_list, 0)
-        bbox_targets = torch.cat(bbox_targets_list, 0)
+        bbox_targets = torch.cat(bbox_targets_list, 0)   # (B*50, 4)
         bbox_weights = torch.cat(bbox_weights_list, 0)
-        pts_targets = torch.cat(pts_targets_list, 0)
+        pts_targets = torch.cat(pts_targets_list, 0)     # (B*50, 20, 2)
         pts_weights = torch.cat(pts_weights_list, 0)
 
         # classification loss
-        cls_scores = cls_scores.reshape(-1, self.cls_out_channels)
+        cls_scores = cls_scores.reshape(-1, self.cls_out_channels) # (B*50, 3)
         # construct weighted avg_factor to match with the official DETR repo
         cls_avg_factor = num_total_pos * 1.0 + \
             num_total_neg * self.bg_cls_weight
@@ -551,7 +550,7 @@ class MapTRHead(DETRHead):
 
         # import pdb;pdb.set_trace()
         # regression L1 loss
-        bbox_preds = bbox_preds.reshape(-1, bbox_preds.size(-1))
+        bbox_preds = bbox_preds.reshape(-1, bbox_preds.size(-1)) # (B*50, 4)
         normalized_bbox_targets = normalize_2d_bbox(bbox_targets, self.pc_range)
         # normalized_bbox_targets = bbox_targets
         isnotnan = torch.isfinite(normalized_bbox_targets).all(dim=-1)
@@ -567,10 +566,10 @@ class MapTRHead(DETRHead):
         # import pdb;pdb.set_trace()
         
         # num_samples, num_order, num_pts, num_coords
-        normalized_pts_targets = normalize_2d_pts(pts_targets, self.pc_range)
+        normalized_pts_targets = normalize_2d_pts(pts_targets, self.pc_range) # (B*50, 20, 2)
 
         # num_samples, num_pts, num_coords
-        pts_preds = pts_preds.reshape(-1, pts_preds.size(-2),pts_preds.size(-1))
+        pts_preds = pts_preds.reshape(-1, pts_preds.size(-2),pts_preds.size(-1)) # (B*50, 20, 2)
         if self.num_pts_per_vec != self.num_pts_per_gt_vec:
             pts_preds = pts_preds.permute(0,2,1)
             pts_preds = F.interpolate(pts_preds, size=(self.num_pts_per_gt_vec), mode='linear',
@@ -585,8 +584,8 @@ class MapTRHead(DETRHead):
             avg_factor=num_total_pos)
         dir_weights = pts_weights[:, :-self.dir_interval,0]
         denormed_pts_preds = denormalize_2d_pts(pts_preds, self.pc_range)
-        denormed_pts_preds_dir = denormed_pts_preds[:,self.dir_interval:,:] - denormed_pts_preds[:,:-self.dir_interval,:]
-        pts_targets_dir = pts_targets[:, self.dir_interval:,:] - pts_targets[:,:-self.dir_interval,:]
+        denormed_pts_preds_dir = denormed_pts_preds[:,self.dir_interval:,:] - denormed_pts_preds[:,:-self.dir_interval,:] # (B*50, 19, 2)
+        pts_targets_dir = pts_targets[:, self.dir_interval:,:] - pts_targets[:,:-self.dir_interval,:]                     # (B*50, 19, 2)
         # dir_weights = pts_weights[:, indice,:-1,0]
         # import pdb;pdb.set_trace()
         loss_dir = self.loss_dir(
@@ -648,9 +647,9 @@ class MapTRHead(DETRHead):
             f'for gt_bboxes_ignore setting to None.'
         gt_vecs_list = copy.deepcopy(gt_bboxes_list)
         # import pdb;pdb.set_trace()
-        all_cls_scores = preds_dicts['all_cls_scores']
-        all_bbox_preds = preds_dicts['all_bbox_preds']
-        all_pts_preds  = preds_dicts['all_pts_preds']
+        all_cls_scores = preds_dicts['all_cls_scores'] # (6, B, 50, 3)
+        all_bbox_preds = preds_dicts['all_bbox_preds'] # (6, B, 50, 4)
+        all_pts_preds  = preds_dicts['all_pts_preds']  # (6, B, 50, )
         enc_cls_scores = preds_dicts['enc_cls_scores']
         enc_bbox_preds = preds_dicts['enc_bbox_preds']
         enc_pts_preds  = preds_dicts['enc_pts_preds']
@@ -688,7 +687,7 @@ class MapTRHead(DETRHead):
         all_gt_bboxes_list = [gt_bboxes_list for _ in range(num_dec_layers)]
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]
         all_gt_pts_list = [gt_pts_list for _ in range(num_dec_layers)]
-        all_gt_shifts_pts_list = [gt_shifts_pts_list for _ in range(num_dec_layers)]
+        all_gt_shifts_pts_list = [gt_shifts_pts_list for _ in range(num_dec_layers)] # (6, B, m, 19, 20, 2)
         all_gt_bboxes_ignore_list = [
             gt_bboxes_ignore for _ in range(num_dec_layers)
         ]

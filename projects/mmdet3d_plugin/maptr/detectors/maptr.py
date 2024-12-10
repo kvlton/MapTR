@@ -73,9 +73,9 @@ class MapTR(MVXTwoStageDetector):
 
     def extract_img_feat(self, img, img_metas, len_queue=None):
         """Extract features of images."""
-        B = img.size(0)
+        B = img.size(0) # (B, 6, 3, 480 X 800)
         if img is not None:
-            
+
             # input_shape = img.shape[-2:]
             # # update real input shape of each single img
             # for img_meta in img_metas:
@@ -95,7 +95,7 @@ class MapTR(MVXTwoStageDetector):
         else:
             return None
         if self.with_img_neck:
-            img_feats = self.img_neck(img_feats)
+            img_feats = self.img_neck(img_feats) # (L=1, B*6, 256, 15 X 25)
 
         img_feats_reshaped = []
         for img_feat in img_feats:
@@ -103,7 +103,7 @@ class MapTR(MVXTwoStageDetector):
             if len_queue is not None:
                 img_feats_reshaped.append(img_feat.view(int(B/len_queue), len_queue, int(BN / B), C, H, W))
             else:
-                img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W))
+                img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W)) # (L=1, B, 6, 256, 15 X 25)
         return img_feats_reshaped
 
     @auto_fp16(apply_to=('img'), out_fp32=True)

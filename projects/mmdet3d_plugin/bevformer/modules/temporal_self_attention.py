@@ -126,13 +126,13 @@ class TemporalSelfAttention(BaseModule):
         self._is_init = True
 
     def forward(self,
-                query,
+                query,          # (B, 200*100, 256)
                 key=None,
                 value=None,
                 identity=None,
-                query_pos=None,
+                query_pos=None, # (B, 200*100, 256)
                 key_padding_mask=None,
-                reference_points=None,
+                reference_points=None, # (2B, 200*100, 1, 2)
                 spatial_shapes=None,
                 level_start_index=None,
                 flag='decoder',
@@ -177,7 +177,7 @@ class TemporalSelfAttention(BaseModule):
         if value is None:
             assert self.batch_first
             bs, len_bev, c = query.shape
-            value = torch.stack([query, query], 1).reshape(bs*2, len_bev, c)
+            value = torch.stack([query, query], 1).reshape(bs*2, len_bev, c) # (2B, 200*100, 256)
 
             # value = torch.cat([query, query], 0)
 
@@ -194,14 +194,14 @@ class TemporalSelfAttention(BaseModule):
         assert (spatial_shapes[:, 0] * spatial_shapes[:, 1]).sum() == num_value
         assert self.num_bev_queue == 2
 
-        query = torch.cat([value[:bs], query], -1)
+        query = torch.cat([value[:bs], query], -1) # (B, 200*100, 512)
         value = self.value_proj(value)
 
         if key_padding_mask is not None:
             value = value.masked_fill(key_padding_mask[..., None], 0.0)
 
         value = value.reshape(bs*self.num_bev_queue,
-                              num_value, self.num_heads, -1)
+                              num_value, self.num_heads, -1) # (2B, 200*100, 8, 32)
 
         sampling_offsets = self.sampling_offsets(query)
         sampling_offsets = sampling_offsets.view(

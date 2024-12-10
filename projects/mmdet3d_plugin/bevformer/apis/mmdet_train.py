@@ -36,7 +36,7 @@ def custom_train_detector(model,
     logger = get_root_logger(cfg.log_level)
 
     # prepare data loaders
-   
+
     dataset = dataset if isinstance(dataset, (list, tuple)) else [dataset]
     #assert len(dataset)==1s
     if 'imgs_per_gpu' in cfg.data:

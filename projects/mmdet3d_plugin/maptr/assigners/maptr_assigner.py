@@ -88,12 +88,12 @@ class MapTRAssigner(BaseAssigner):
         self.pc_range = pc_range
 
     def assign(self,
-               bbox_pred,
-               cls_pred,
-               pts_pred,
-               gt_bboxes, 
-               gt_labels,
-               gt_pts,
+               bbox_pred, # (50, 4)
+               cls_pred,  # (50, 3)
+               pts_pred,  # (50, 20, 2)
+               gt_bboxes, # (m, 4)
+               gt_labels, # (m)
+               gt_pts,    # (m, 19, 20, 2)
                gt_bboxes_ignore=None,
                eps=1e-7):
         """Computes one-to-one matching based on the weighted costs.
@@ -147,13 +147,13 @@ class MapTRAssigner(BaseAssigner):
 
         # 2. compute the weighted costs
         # classification and bboxcost.
-        cls_cost = self.cls_cost(cls_pred, gt_labels)
+        cls_cost = self.cls_cost(cls_pred, gt_labels) # (50, m)
         # regression L1 cost
         
         normalized_gt_bboxes = normalize_2d_bbox(gt_bboxes, self.pc_range)
         # normalized_gt_bboxes = gt_bboxes
         # import pdb;pdb.set_trace()
-        reg_cost = self.reg_cost(bbox_pred[:, :4], normalized_gt_bboxes[:, :4])
+        reg_cost = self.reg_cost(bbox_pred[:, :4], normalized_gt_bboxes[:, :4]) # (50, m)
 
         _, num_orders, num_pts_per_gtline, num_coords = gt_pts.shape
         normalized_gt_pts = normalize_2d_pts(gt_pts, self.pc_range)
@@ -165,14 +165,14 @@ class MapTRAssigner(BaseAssigner):
         else:
             pts_pred_interpolated = pts_pred
         # num_q, num_pts, 2 <-> num_gt, num_pts, 2
-        pts_cost_ordered = self.pts_cost(pts_pred_interpolated, normalized_gt_pts)
-        pts_cost_ordered = pts_cost_ordered.view(num_bboxes, num_gts, num_orders)
-        pts_cost, order_index = torch.min(pts_cost_ordered, 2)
+        pts_cost_ordered = self.pts_cost(pts_pred_interpolated, normalized_gt_pts) # (50, m*19)
+        pts_cost_ordered = pts_cost_ordered.view(num_bboxes, num_gts, num_orders)  # (50, m, 19)
+        pts_cost, order_index = torch.min(pts_cost_ordered, 2)                     # (50, m)
         
         bboxes = denormalize_2d_bbox(bbox_pred, self.pc_range)
-        iou_cost = self.iou_cost(bboxes, gt_bboxes)
+        iou_cost = self.iou_cost(bboxes, gt_bboxes) # (50, m)
         # weighted sum of above three costs
-        cost = cls_cost + reg_cost + iou_cost + pts_cost
+        cost = cls_cost + reg_cost + iou_cost + pts_cost #(50, m)
         
         # 3. do Hungarian matching on CPU using linear_sum_assignment
         cost = cost.detach().cpu()
