@@ -336,7 +336,7 @@ class MapTRPerceptionTransformer(BaseModule):
 
         query = query.permute(1, 0, 2)         # (50*20, B, 256)
         query_pos = query_pos.permute(1, 0, 2) # (50*20, B, 256)
-        bev_embed = bev_embed.permute(1, 0, 2) # (50*20, B, 256)
+        bev_embed = bev_embed.permute(1, 0, 2) # (200*100, B, 256)
 
         inter_states, inter_references = self.decoder(
             query=query,
