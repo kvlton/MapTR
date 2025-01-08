@@ -565,6 +565,8 @@ class VectorizedLocalMap(object):
             else:
                 raise ValueError(f'WRONG vec_class: {vec_class}')
 
+        # self.show_vector_map(vectors)
+
         filtered_vectors = []
         gt_pts_loc_3d = []
         gt_pts_num_3d = []
@@ -584,6 +586,29 @@ class VectorizedLocalMap(object):
 
         )
         return anns_results
+
+    def show_vector_map(self, vectors):
+        x_min, x_max = -15.0, 15.0
+        y_min, y_max = -30.0, 30.0
+        resolution = 0.1
+        width = int((x_max - x_min) / resolution)
+        height = int((y_max - y_min) / resolution)
+
+        import cv2
+        image = np.full((height, width, 3), 255, dtype=np.uint8)
+        color_map = {0:(255,0,0), 1:(0,0,255), 2:(0,255,0)}
+        for line, type in vectors:
+            if type == -1:
+                continue
+            prev_xy = None
+            for coord in line.coords:
+                row = int((y_max - coord[1]) / resolution)
+                col = int((coord[0] - x_min) / resolution)
+                if prev_xy is not None:
+                    cv2.line(image, (prev_xy[0], prev_xy[1]), (col, row), color_map.get(type, (0,0,0)), thickness = 1)
+                prev_xy = [col, row]
+        cv2.imwrite('vector_map.jpg', image)
+
 
     def get_map_geom(self, patch_box, patch_angle, layer_names, location):
         map_geom = []
