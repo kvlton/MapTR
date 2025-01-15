@@ -1,4 +1,5 @@
 import copy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -137,11 +138,15 @@ class MapTR(MVXTwoStageDetector):
         Returns:
             dict: Losses of each branch.
         """
+        bs = len(gt_bboxes_3d)
+        hdmap_noises_3d = list(zip(np.random.uniform(-5.0, 5.0, bs), 
+                                   np.random.uniform(-5.0, 5.0, bs), 
+                                   np.random.uniform(-5.0, 5.0, bs)))
 
         outs = self.pts_bbox_head(
-            pts_feats, lidar_feat, img_metas, prev_bev)
-        loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
-        losses = self.pts_bbox_head.loss(*loss_inputs, img_metas=img_metas)
+            pts_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, img_metas, prev_bev)
+        loss_inputs = [gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, outs]
+        losses = self.pts_bbox_head.loss_only_match(*loss_inputs, img_metas=img_metas)
         return losses
 
     def forward_dummy(self, img):

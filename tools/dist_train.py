@@ -3,7 +3,7 @@ import subprocess
 from os.path import dirname, join
  
 # 设置环境变量和参数
-config = "./projects/configs/maptr/maptr_tiny_r50_24e.py"
+config = "./projects/configs/matcher/matcher_tiny_r50_24e.py"
 gpus = "1"
 port = "28509"
  

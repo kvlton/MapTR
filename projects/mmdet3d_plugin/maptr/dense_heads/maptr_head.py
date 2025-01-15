@@ -1,4 +1,6 @@
 import copy
+import numpy as np
+from shapely import affinity
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +13,7 @@ from mmdet.models.utils.transformer import inverse_sigmoid
 from mmdet.core.bbox.transforms import bbox_xyxy_to_cxcywh, bbox_cxcywh_to_xyxy
 from mmdet.core import (multi_apply, multi_apply, reduce_mean)
 from mmcv.utils import TORCH_VERSION, digit_version
+from ..modules.matcher import HdmapMatcher
 
 def normalize_2d_bbox(bboxes, pc_range):
 
@@ -84,6 +87,7 @@ class MapTRHead(DETRHead):
                              loss_src_weight=1.0, 
                              loss_dst_weight=1.0),
                  loss_dir=dict(type='PtsDirCosLoss', loss_weight=2.0),
+                 loss_match=dict(type='SmoothL1Loss', loss_weight=1.0),
                  **kwargs):
 
         self.bev_h = bev_h
@@ -110,7 +114,6 @@ class MapTRHead(DETRHead):
         self.real_w = self.pc_range[3] - self.pc_range[0]
         self.real_h = self.pc_range[4] - self.pc_range[1]
         self.num_cls_fcs = num_cls_fcs - 1
-        
 
         self.query_embed_type = query_embed_type
         self.transform_method = transform_method
@@ -127,8 +130,10 @@ class MapTRHead(DETRHead):
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
+        self.hdmap_matcher = HdmapMatcher(6, 64, 4)
         self.loss_pts = build_loss(loss_pts)
         self.loss_dir = build_loss(loss_dir)
+        self.loss_match = build_loss(loss_match)
         num_query = num_vec * num_pts_per_vec
         self.num_query = num_query
         self.num_vec = num_vec
@@ -200,7 +205,8 @@ class MapTRHead(DETRHead):
     
     # @auto_fp16(apply_to=('mlvl_feats'))
     @force_fp32(apply_to=('mlvl_feats', 'prev_bev'))
-    def forward(self, mlvl_feats, lidar_feat, img_metas, prev_bev=None,  only_bev=False):
+    def forward(self, mlvl_feats, lidar_feat, hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d,
+                img_metas, prev_bev=None,  only_bev=False):
         """Forward function.
         Args:
             mlvl_feats (tuple[Tensor]): Features from the upstream
@@ -315,7 +321,125 @@ class MapTRHead(DETRHead):
             'enc_pts_preds': None
         }
 
+        # hdmap match
+        perception_list = self.get_bboxes(outs, img_metas)
+        hdmap_list = [hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d]
+        # self.show_match(perception_list, hdmap_list, img_metas)
+        perception_features = self.extract_perception_features(perception_list)
+        hdmap_features = self.extract_hdmap_features(hdmap_list)
+        output_match_result = self.hdmap_matcher(perception_features, hdmap_features)
+
+        outs["hdmap_match_result"] = output_match_result
         return outs
+    
+    def extract_perception_features(self, perception_list):
+        bs = len(perception_list)
+        device = perception_list[0][3].device
+
+        perception_features_list = []
+        for i in range(bs):
+            perception_scores = perception_list[i][1]
+            perception_labels = perception_list[i][2]
+            perception_points = perception_list[i][3]
+
+            perception_feature_list = []
+            for j in range(perception_points.shape[0]):
+                score = perception_scores[j]
+                label = perception_labels[j]
+                lane_points = perception_points[j]
+                lane_feature_list = []
+                for k in range(1, lane_points.shape[0]):
+                    lane_feature_list.append([lane_points[k-1][0], lane_points[k-1][1], 
+                                              lane_points[k][0], lane_points[k][1], label, score])
+                perception_feature_list.append(lane_feature_list)
+            perception_features_list.append(perception_feature_list)
+        perception_features = torch.tensor(perception_features_list).cuda(device).to(dtype=torch.float32)
+        return perception_features
+    
+    def extract_hdmap_features(self, hdmap_list):
+        bs = len(hdmap_list[0])
+        device = hdmap_list[1][0].device
+
+        # max_lane_num, max_lane_points_num
+        max_lane_num = 0
+        max_lane_points_num = 0
+        for i in range(bs):
+            lane_num = len(hdmap_list[0][i].instance_list)
+            max_lane_num = max(max_lane_num, lane_num)
+            for j in range(lane_num):
+                lane_points_num = len(hdmap_list[0][i].instance_list[j].coords)
+                max_lane_points_num = max(max_lane_points_num, lane_points_num)
+
+        hdmap_features_array = np.zeros((bs, max_lane_num, max_lane_points_num-1, 6), dtype=np.float32)
+        for i in range(bs):
+            hdmap_bboxes_3d = hdmap_list[0][i]
+            hdmap_labels_3d = hdmap_list[1][i]
+            hdmap_noises_3d = hdmap_list[2][i]
+            for j in range(len(hdmap_bboxes_3d.instance_list)):
+                line_string = hdmap_bboxes_3d.instance_list[j]
+                line_string = affinity.rotate(line_string, hdmap_noises_3d[2], origin=(0.0, 0.0))
+                for k in range(len(line_string.coords)-1):
+                    hdmap_features_array[i,j,k,0] = line_string.coords[k][0] + hdmap_noises_3d[0]
+                    hdmap_features_array[i,j,k,1] = line_string.coords[k][1] + hdmap_noises_3d[1]
+                    hdmap_features_array[i,j,k,2] = line_string.coords[k+1][0] + hdmap_noises_3d[0]
+                    hdmap_features_array[i,j,k,3] = line_string.coords[k+1][1] + hdmap_noises_3d[1]
+                    hdmap_features_array[i,j,k,4] = hdmap_labels_3d[j]
+                    hdmap_features_array[i,j,k,5] = 1.0
+        hdmap_features = torch.tensor(hdmap_features_array).cuda(device).to(dtype=torch.float32)        
+        return hdmap_features
+    
+    def show_match(self, perception_list, hdmap_list, img_metas):
+        bs = len(perception_list)
+        x_min, x_max = -15.0, 15.0
+        y_min, y_max = -30.0, 30.0
+        resolution = 0.02
+        width = int((x_max - x_min) / resolution)
+        height = int((y_max - y_min) / resolution)
+        color_map = {0:(255,0,0), 1:(0,0,255), 2:(0,255,0)}
+
+        import cv2
+        for i in range(bs):
+            # empty image
+            image = np.full((height, width, 3), 255, dtype=np.uint8)
+
+            # draw hdmap
+            hdmap_bboxes_3d = hdmap_list[0][i]
+            hdmap_labels_3d = hdmap_list[1][i]
+            hdmap_noises_3d = hdmap_list[2][i]
+            for j in range(len(hdmap_bboxes_3d.instance_list)):
+                label = hdmap_labels_3d[j].item()
+                if label == -1:
+                    continue
+                line_string = hdmap_bboxes_3d.instance_list[j]
+                line_string = affinity.rotate(line_string, hdmap_noises_3d[2], origin=(0.0, 0.0))
+                prev_xy = None
+                for coord in line_string.coords:
+                    row = int((y_max - (coord[1]+hdmap_noises_3d[1])) / resolution)
+                    col = int(((coord[0]+hdmap_noises_3d[0]) - x_min) / resolution)
+                    if prev_xy is not None:
+                        cv2.line(image, (prev_xy[0], prev_xy[1]), (col, row), 
+                                 color_map.get(label, (0,0,0)), thickness = 2)
+                    prev_xy = [col, row]
+            
+            # draw perception
+            perception_scores = perception_list[i][1]
+            perception_labels = perception_list[i][2]
+            perception_points = perception_list[i][3]
+            for j in range(perception_points.shape[0]):
+                score = perception_scores[j].item()
+                if score < 0.5:
+                    continue
+                label = perception_labels[j].item()
+                if label == -1:
+                    continue
+                for xy in perception_points[j]:
+                    row = int((y_max - xy[1].item()) / resolution)
+                    col = int((xy[0].item() - x_min) / resolution)
+                    cv2.circle(image, (col, row), 5, color_map.get(label, (0,0,0)), thickness=-1)
+            
+            cv2.imwrite('bev_match.jpg', image)
+
+
     def transform_box(self, pts, y_first=False):
         """
         Converting the points set into bounding box.
@@ -608,10 +732,30 @@ class MapTRHead(DETRHead):
             loss_dir = torch.nan_to_num(loss_dir)
         return loss_cls, loss_bbox, loss_iou, loss_pts, loss_dir
 
+
+    @force_fp32(apply_to=('preds_dicts'))
+    def loss_only_match(self,
+             gt_bboxes_list,
+             gt_labels_list,
+             hdmap_noises_3d,
+             preds_dicts,
+             gt_bboxes_ignore=None,
+             img_metas=None):
+        loss_dict = dict()
+        match_result = preds_dicts["hdmap_match_result"]
+        hdmap_noises_3d = match_result.new_tensor(hdmap_noises_3d)
+        loss_match = self.loss_match(match_result, hdmap_noises_3d)
+        if digit_version(TORCH_VERSION) >= digit_version('1.8'):
+            loss_match = torch.nan_to_num(loss_match)
+        loss_dict['loss_match'] = loss_match
+        return loss_dict
+        
+
     @force_fp32(apply_to=('preds_dicts'))
     def loss(self,
              gt_bboxes_list,
              gt_labels_list,
+             hdmap_noises_3d,
              preds_dicts,
              gt_bboxes_ignore=None,
              img_metas=None):
@@ -649,7 +793,7 @@ class MapTRHead(DETRHead):
         # import pdb;pdb.set_trace()
         all_cls_scores = preds_dicts['all_cls_scores'] # (6, B, 50, 3)
         all_bbox_preds = preds_dicts['all_bbox_preds'] # (6, B, 50, 4)
-        all_pts_preds  = preds_dicts['all_pts_preds']  # (6, B, 50, )
+        all_pts_preds  = preds_dicts['all_pts_preds']  # (6, B, 50, 20, 2)
         enc_cls_scores = preds_dicts['enc_cls_scores']
         enc_bbox_preds = preds_dicts['enc_bbox_preds']
         enc_pts_preds  = preds_dicts['enc_pts_preds']
@@ -733,6 +877,14 @@ class MapTRHead(DETRHead):
             loss_dict[f'd{num_dec_layer}.loss_pts'] = loss_pts_i
             loss_dict[f'd{num_dec_layer}.loss_dir'] = loss_dir_i
             num_dec_layer += 1
+
+        # match loss for hdmap match
+        match_result = preds_dicts["hdmap_match_result"]
+        hdmap_noises_3d = match_result.new_tensor(hdmap_noises_3d)
+        loss_match = self.loss_match(match_result, hdmap_noises_3d)
+        if digit_version(TORCH_VERSION) >= digit_version('1.8'):
+            loss_match = torch.nan_to_num(loss_match)
+        loss_dict['loss_match'] = loss_match
         return loss_dict
 
     @force_fp32(apply_to=('preds_dicts'))
