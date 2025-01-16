@@ -41,7 +41,7 @@
             // "console": "integratedTerminal",
             // "justMyCode": false,
             // "args": [
-            //     "./projects/configs/maptr/maptr_tiny_r50_110e.py",
+            //     "./projects/configs/matcher/matcher_tiny_r50_24e.py",
             //     "./ckpts/maptr_tiny_r50_110e.pth"
             // ]
         },

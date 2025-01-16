@@ -538,7 +538,7 @@ class VectorizedLocalMap(object):
         '''
         use lidar2global to get gt map layers
         '''
-        
+
         map_pose = lidar2global_translation[:2]
         rotation = Quaternion(lidar2global_rotation)
 
@@ -1038,6 +1038,13 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
                 gt_vecs_pts_loc = gt_vecs_pts_loc
         example['gt_labels_3d'] = DC(gt_vecs_label, cpu_only=False)
         example['gt_bboxes_3d'] = DC(gt_vecs_pts_loc, cpu_only=True)
+
+        # add hdmap noise for hdmap_match
+        hdmap_noises_3d = torch.tensor([
+            torch.rand(1) * 10.0 - 5.0,
+            torch.rand(1) * 10.0 - 5.0,
+            torch.rand(1) * 10.0 - 5.0])
+        example['hdmap_noises_3d'] = DC(hdmap_noises_3d, cpu_only=False)
         return example
 
     def prepare_train_data(self, index):
@@ -1199,9 +1206,9 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
                     lidar2cam=lidar2cam_rts,
                 ))
 
-        if not self.test_mode:
-            annos = self.get_ann_info(index)
-            input_dict['ann_info'] = annos
+
+        annos = self.get_ann_info(index)
+        input_dict['ann_info'] = annos
 
         rotation = Quaternion(input_dict['ego2global_rotation'])
         translation = input_dict['ego2global_translation']
@@ -1237,8 +1244,7 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
         input_dict = self.get_data_info(index)
         self.pre_pipeline(input_dict)
         example = self.pipeline(input_dict)
-        if self.is_vis_on_test:
-            example = self.vectormap_pipeline(example, input_dict)
+        example = self.vectormap_pipeline(example, input_dict)
         return example
 
     def __getitem__(self, idx):

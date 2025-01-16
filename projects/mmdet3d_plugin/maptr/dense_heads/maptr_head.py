@@ -324,7 +324,7 @@ class MapTRHead(DETRHead):
         # hdmap match
         perception_list = self.get_bboxes(outs, img_metas)
         hdmap_list = [hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d]
-        # self.show_match(perception_list, hdmap_list, img_metas)
+        self.show_match(perception_list, hdmap_list, img_metas)
         perception_features = self.extract_perception_features(perception_list)
         hdmap_features = self.extract_hdmap_features(hdmap_list)
         output_match_result = self.hdmap_matcher(perception_features, hdmap_features)
@@ -743,7 +743,7 @@ class MapTRHead(DETRHead):
              img_metas=None):
         loss_dict = dict()
         match_result = preds_dicts["hdmap_match_result"]
-        hdmap_noises_3d = match_result.new_tensor(hdmap_noises_3d)
+        hdmap_noises_3d = torch.stack(hdmap_noises_3d, dim=0)
         loss_match = self.loss_match(match_result, hdmap_noises_3d)
         if digit_version(TORCH_VERSION) >= digit_version('1.8'):
             loss_match = torch.nan_to_num(loss_match)
@@ -880,7 +880,7 @@ class MapTRHead(DETRHead):
 
         # match loss for hdmap match
         match_result = preds_dicts["hdmap_match_result"]
-        hdmap_noises_3d = match_result.new_tensor(hdmap_noises_3d)
+        hdmap_noises_3d = torch.stack(hdmap_noises_3d, dim=0)
         loss_match = self.loss_match(match_result, hdmap_noises_3d)
         if digit_version(TORCH_VERSION) >= digit_version('1.8'):
             loss_match = torch.nan_to_num(loss_match)

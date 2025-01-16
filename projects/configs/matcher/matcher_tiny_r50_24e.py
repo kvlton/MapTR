@@ -211,8 +211,8 @@ train_pipeline = [
 
 test_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
-   
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1600, 900),
@@ -221,11 +221,8 @@ test_pipeline = [
         transforms=[
             dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
             dict(type='PadMultiViewImage', size_divisor=32),
-            dict(
-                type='DefaultFormatBundle3D',
-                class_names=class_names,
-                with_label=False),
-            dict(type='CustomCollect3D', keys=['img'])
+            dict(type='DefaultFormatBundle3D', class_names=class_names),
+            dict(type='CustomCollect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img'])
         ])
 ]
 

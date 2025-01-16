@@ -121,6 +121,7 @@ class MapTR(MVXTwoStageDetector):
                           lidar_feat,
                           gt_bboxes_3d,
                           gt_labels_3d,
+                          hdmap_noises_3d,
                           img_metas,
                           gt_bboxes_ignore=None,
                           prev_bev=None):
@@ -138,13 +139,9 @@ class MapTR(MVXTwoStageDetector):
         Returns:
             dict: Losses of each branch.
         """
-        bs = len(gt_bboxes_3d)
-        hdmap_noises_3d = list(zip(np.random.uniform(-5.0, 5.0, bs), 
-                                   np.random.uniform(-5.0, 5.0, bs), 
-                                   np.random.uniform(-5.0, 5.0, bs)))
-
         outs = self.pts_bbox_head(
-            pts_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, img_metas, prev_bev)
+            pts_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
+            hdmap_noises_3d, img_metas, prev_bev)
         loss_inputs = [gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, outs]
         losses = self.pts_bbox_head.loss_only_match(*loss_inputs, img_metas=img_metas)
         return losses
@@ -233,6 +230,7 @@ class MapTR(MVXTwoStageDetector):
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
+                      hdmap_noises_3d=None,
                       gt_labels=None,
                       gt_bboxes=None,
                       img=None,
@@ -283,13 +281,20 @@ class MapTR(MVXTwoStageDetector):
         img_feats = self.extract_feat(img=img, img_metas=img_metas)
         losses = dict()
         losses_pts = self.forward_pts_train(img_feats, lidar_feat, gt_bboxes_3d,
-                                            gt_labels_3d, img_metas,
+                                            gt_labels_3d, hdmap_noises_3d, img_metas,
                                             gt_bboxes_ignore, prev_bev)
 
         losses.update(losses_pts)
         return losses
 
-    def forward_test(self, img_metas, img=None,points=None,  **kwargs):
+    def forward_test(self,
+                     img_metas,
+                     img=None,
+                     points=None,
+                     gt_bboxes_3d=None,
+                     gt_labels_3d=None,
+                     hdmap_noises_3d=None,
+                     **kwargs):
         for var, name in [(img_metas, 'img_metas')]:
             if not isinstance(var, list):
                 raise TypeError('{} must be a list, but got {}'.format(
@@ -317,7 +322,8 @@ class MapTR(MVXTwoStageDetector):
             img_metas[0][0]['can_bus'][:3] = 0
 
         new_prev_bev, bbox_results = self.simple_test(
-            img_metas[0], img[0], points[0], prev_bev=self.prev_frame_info['prev_bev'], **kwargs)
+            img_metas[0], img[0], points[0], gt_bboxes_3d, gt_labels_3d, 
+            hdmap_noises_3d, prev_bev=self.prev_frame_info['prev_bev'], **kwargs)
         # During inference, we save the BEV features and ego motion of each timestamp.
         self.prev_frame_info['prev_pos'] = tmp_pos
         self.prev_frame_info['prev_angle'] = tmp_angle
@@ -352,9 +358,18 @@ class MapTR(MVXTwoStageDetector):
             result_dict['attrs_3d'] = attrs.cpu()
 
         return result_dict
-    def simple_test_pts(self, x, lidar_feat, img_metas, prev_bev=None, rescale=False):
+    def simple_test_pts(self,
+                        x,
+                        lidar_feat,
+                        img_metas,
+                        gt_bboxes_3d=None,
+                        gt_labels_3d=None,
+                        hdmap_noises_3d=None,
+                        prev_bev=None,
+                        rescale=False):
         """Test function"""
-        outs = self.pts_bbox_head(x, lidar_feat, img_metas, prev_bev=prev_bev)
+        outs = self.pts_bbox_head(x, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
+                                  hdmap_noises_3d, img_metas, prev_bev=prev_bev)
 
         bbox_list = self.pts_bbox_head.get_bboxes(
             outs, img_metas, rescale=rescale)
@@ -365,7 +380,16 @@ class MapTR(MVXTwoStageDetector):
         ]
         # import pdb;pdb.set_trace()
         return outs['bev_embed'], bbox_results
-    def simple_test(self, img_metas, img=None, points=None, prev_bev=None, rescale=False, **kwargs):
+    def simple_test(self,
+                    img_metas,
+                    img=None,
+                    points=None,
+                    gt_bboxes_3d=None,
+                    gt_labels_3d=None,
+                    hdmap_noises_3d=None,
+                    prev_bev=None,
+                    rescale=False,
+                    **kwargs):
         """Test function without augmentaiton."""
         lidar_feat = None
         if self.modality =='fusion':
@@ -374,7 +398,8 @@ class MapTR(MVXTwoStageDetector):
 
         bbox_list = [dict() for i in range(len(img_metas))]
         new_prev_bev, bbox_pts = self.simple_test_pts(
-            img_feats, lidar_feat, img_metas, prev_bev, rescale=rescale)
+            img_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
+            hdmap_noises_3d, img_metas, prev_bev, rescale=rescale)
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
         return new_prev_bev, bbox_list
