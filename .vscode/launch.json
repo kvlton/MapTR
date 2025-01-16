@@ -1,0 +1,49 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // "name": "MapTR: create_data",
+            // "type": "debugpy",
+            // "request": "launch",
+            // "program": "${workspaceFolder}/tools/create_data.py",
+            // "console": "integratedTerminal",
+            // "justMyCode": false,
+            // "args": [
+            //     "nuscenes", 
+            //     "--root-path", "./data/nuscenes",
+            //     "--out-dir", "./data/nuscenes",
+            //     "--extra-tag", "nuscenes",
+            //     "--version", "v1.0",
+            //     "--canbus", "./data"
+            // ]
+
+            "name": "MapTR: dist_train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/dist_train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+            
+            // "name": "MapTR: dist_test",
+            // "type": "debugpy",
+            // "request": "launch",
+            // "program": "${workspaceFolder}/tools/dist_test.py",
+            // "console": "integratedTerminal",
+            // "justMyCode": false
+
+            // "name": "MapTR: vis_pred",
+            // "type": "debugpy",
+            // "request": "launch",
+            // "program": "${workspaceFolder}/tools/maptr/vis_pred.py",
+            // "console": "integratedTerminal",
+            // "justMyCode": false,
+            // "args": [
+            //     "./projects/configs/maptr/maptr_tiny_r50_110e.py",
+            //     "./ckpts/maptr_tiny_r50_110e.pth"
+            // ]
+        },
+    ]
+}
