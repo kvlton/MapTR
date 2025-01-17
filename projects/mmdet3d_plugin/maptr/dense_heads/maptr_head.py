@@ -324,7 +324,7 @@ class MapTRHead(DETRHead):
         # hdmap match
         perception_list = self.get_bboxes(outs, img_metas)
         hdmap_list = [hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d]
-        self.show_match(perception_list, hdmap_list, img_metas)
+        # self.show_match(perception_list, hdmap_list, img_metas)
         perception_features = self.extract_perception_features(perception_list)
         hdmap_features = self.extract_hdmap_features(hdmap_list)
         output_match_result = self.hdmap_matcher(perception_features, hdmap_features)

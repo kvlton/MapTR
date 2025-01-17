@@ -140,8 +140,8 @@ class MapTR(MVXTwoStageDetector):
             dict: Losses of each branch.
         """
         outs = self.pts_bbox_head(
-            pts_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
-            hdmap_noises_3d, img_metas, prev_bev)
+            pts_feats, lidar_feat, img_metas, 
+            gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, prev_bev)
         loss_inputs = [gt_bboxes_3d, gt_labels_3d, hdmap_noises_3d, outs]
         losses = self.pts_bbox_head.loss_only_match(*loss_inputs, img_metas=img_metas)
         return losses
