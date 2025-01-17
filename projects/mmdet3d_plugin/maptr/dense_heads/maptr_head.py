@@ -37,6 +37,16 @@ def normalize_2d_pts(pts, pc_range):
     normalized_pts = new_pts / factor
     return normalized_pts
 
+def normalize_features(features, pc_range):
+    factor = max(pc_range)
+    features[...,0:4] /= factor
+    return features
+
+def denormalize_translations(translations, pc_range):
+    factor = max(pc_range)
+    translations[...,0:2] *= factor
+    return translations
+    
 def denormalize_2d_bbox(bboxes, pc_range):
 
     bboxes = bbox_cxcywh_to_xyxy(bboxes)
@@ -327,7 +337,10 @@ class MapTRHead(DETRHead):
         # self.show_match(perception_list, hdmap_list, img_metas)
         perception_features = self.extract_perception_features(perception_list)
         hdmap_features = self.extract_hdmap_features(hdmap_list)
+        perception_features = normalize_features(perception_features, self.pc_range)
+        hdmap_features = normalize_features(hdmap_features, self.pc_range)
         output_match_result = self.hdmap_matcher(perception_features, hdmap_features)
+        output_match_result = denormalize_translations(output_match_result, self.pc_range)
 
         outs["hdmap_match_result"] = output_match_result
         return outs
@@ -359,6 +372,7 @@ class MapTRHead(DETRHead):
     def extract_hdmap_features(self, hdmap_list):
         bs = len(hdmap_list[0])
         device = hdmap_list[1][0].device
+        factor = max(self.pc_range)
 
         # max_lane_num, max_lane_points_num
         max_lane_num = 0
@@ -389,16 +403,15 @@ class MapTRHead(DETRHead):
         return hdmap_features
     
     def show_match(self, perception_list, hdmap_list, img_metas):
-        bs = len(perception_list)
-        x_min, x_max = -15.0, 15.0
-        y_min, y_max = -30.0, 30.0
         resolution = 0.02
+        x_min, x_max = self.pc_range[0], self.pc_range[3]
+        y_min, y_max = self.pc_range[1], self.pc_range[4]
         width = int((x_max - x_min) / resolution)
         height = int((y_max - y_min) / resolution)
         color_map = {0:(255,0,0), 1:(0,0,255), 2:(0,255,0)}
 
         import cv2
-        for i in range(bs):
+        for i in range(len(perception_list)):
             # empty image
             image = np.full((height, width, 3), 255, dtype=np.uint8)
 
