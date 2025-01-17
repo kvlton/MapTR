@@ -368,8 +368,8 @@ class MapTR(MVXTwoStageDetector):
                         prev_bev=None,
                         rescale=False):
         """Test function"""
-        outs = self.pts_bbox_head(x, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
-                                  hdmap_noises_3d, img_metas, prev_bev=prev_bev)
+        outs = self.pts_bbox_head(x, lidar_feat, img_metas, gt_bboxes_3d, 
+                                  gt_labels_3d, hdmap_noises_3d, prev_bev=prev_bev)
 
         bbox_list = self.pts_bbox_head.get_bboxes(
             outs, img_metas, rescale=rescale)
@@ -398,8 +398,8 @@ class MapTR(MVXTwoStageDetector):
 
         bbox_list = [dict() for i in range(len(img_metas))]
         new_prev_bev, bbox_pts = self.simple_test_pts(
-            img_feats, lidar_feat, gt_bboxes_3d, gt_labels_3d, 
-            hdmap_noises_3d, img_metas, prev_bev, rescale=rescale)
+            img_feats, lidar_feat, img_metas, gt_bboxes_3d, 
+            gt_labels_3d, hdmap_noises_3d, prev_bev, rescale=rescale)
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
         return new_prev_bev, bbox_list

@@ -205,8 +205,8 @@ class MapTRHead(DETRHead):
     
     # @auto_fp16(apply_to=('mlvl_feats'))
     @force_fp32(apply_to=('mlvl_feats', 'prev_bev'))
-    def forward(self, mlvl_feats, lidar_feat, hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d,
-                img_metas, prev_bev=None,  only_bev=False):
+    def forward(self, mlvl_feats, lidar_feat, img_metas, 
+                hdmap_bboxes_3d, hdmap_labels_3d, hdmap_noises_3d, prev_bev=None,  only_bev=False):
         """Forward function.
         Args:
             mlvl_feats (tuple[Tensor]): Features from the upstream
