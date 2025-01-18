@@ -106,13 +106,25 @@ class CrossAttention(nn.Module):
         x1 = x1 + self.ffn(torch.cat([x1, m1], -1))
         return x0, x1
 
+class TransformerLayer(nn.Module):
+    def __init__(self, embed_dim=128, num_heads=4):
+        super().__init__()
+        self.self_attn = SelfAttention(embed_dim, num_heads)
+        self.cross_attn = CrossAttention(embed_dim, num_heads)
+
+    def forward(self, feature0, feature1):
+        feature0 = self.self_attn(feature0)
+        feature1 = self.self_attn(feature1)
+        return self.cross_attn(feature0, feature1)
+
 
 class HdmapMatcher(nn.Module):
-    def __init__(self, input_channels=6, hidden_channels=64, num_heads=4):
+    def __init__(self, input_channels=6, hidden_channels=64, num_layers=6, num_heads=4):
         super().__init__()
-        self.feature_net = SubgraphNet(input_channels, hidden_channels)
-        self.self_attn = SelfAttention(hidden_channels * 2, num_heads)
-        self.cross_attn = CrossAttention(hidden_channels * 2, num_heads)
+        self.vector_net = SubgraphNet(input_channels, hidden_channels)
+        self.transformers = nn.ModuleList(
+            [TransformerLayer(hidden_channels * 2, num_heads) for _ in range(num_layers)]
+        )
         self.output_net = SubgraphNet(hidden_channels*2, hidden_channels)
         self.reg_branch = nn.Sequential(
             nn.Linear(4 * hidden_channels, 4 * hidden_channels),
@@ -123,13 +135,13 @@ class HdmapMatcher(nn.Module):
         )
     
     def forward(self, perception_features, hdmap_features):
-        perception_features = self.feature_net(perception_features)
-        hdmap_features = self.feature_net(hdmap_features)
-        perception_features = self.self_attn(perception_features)
-        hdmap_features = self.self_attn(hdmap_features)
-        output_features0, output_features1 = self.cross_attn(perception_features, hdmap_features)
-        output_features0 = self.output_net(output_features0)
-        output_features1 = self.output_net(output_features1)
-        output_features = torch.cat((output_features0, output_features1), dim=-1)
+        feature0 = self.vector_net(perception_features)
+        feature1 = self.vector_net(hdmap_features)
+        for transformer in self.transformers:
+            feature0, feature1 = transformer(feature0, feature1)
+
+        feature0 = self.output_net(feature0)
+        feature1 = self.output_net(feature1)
+        output_features = torch.cat((feature0, feature1), dim=-1)
         output = self.reg_branch(output_features)
         return output

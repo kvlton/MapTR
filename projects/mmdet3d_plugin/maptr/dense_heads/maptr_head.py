@@ -140,7 +140,7 @@ class MapTRHead(DETRHead):
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
-        self.hdmap_matcher = HdmapMatcher(6, 64, 4)
+        self.hdmap_matcher = HdmapMatcher(6, 64, 3, 4)
         self.loss_pts = build_loss(loss_pts)
         self.loss_dir = build_loss(loss_dir)
         self.loss_match = build_loss(loss_match)
@@ -372,7 +372,6 @@ class MapTRHead(DETRHead):
     def extract_hdmap_features(self, hdmap_list):
         bs = len(hdmap_list[0])
         device = hdmap_list[1][0].device
-        factor = max(self.pc_range)
 
         # max_lane_num, max_lane_points_num
         max_lane_num = 0
@@ -402,10 +401,10 @@ class MapTRHead(DETRHead):
         hdmap_features = torch.tensor(hdmap_features_array).cuda(device).to(dtype=torch.float32)        
         return hdmap_features
     
-    def show_match(self, perception_list, hdmap_list, img_metas):
+    def show_match(self, perception_list, hdmap_list, pc_range):
         resolution = 0.02
-        x_min, x_max = self.pc_range[0], self.pc_range[3]
-        y_min, y_max = self.pc_range[1], self.pc_range[4]
+        x_min, x_max = pc_range[0], pc_range[3]
+        y_min, y_max = pc_range[1], pc_range[4]
         width = int((x_max - x_min) / resolution)
         height = int((y_max - y_min) / resolution)
         color_map = {0:(255,0,0), 1:(0,0,255), 2:(0,255,0)}
