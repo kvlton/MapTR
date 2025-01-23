@@ -16,7 +16,7 @@ def scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0.0):
     return output
 
 class SubgraphNet_Layer(nn.Module):
-    def __init__(self, input_channels=128, hidden_channels=64):
+    def __init__(self, input_channels=256, hidden_channels=128):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(input_channels, hidden_channels),
@@ -34,7 +34,7 @@ class SubgraphNet_Layer(nn.Module):
         return x
 
 class SubgraphNet(nn.Module):
-    def __init__(self, input_channels=128, hidden_channels=64):
+    def __init__(self, input_channels=256, hidden_channels=128):
         super().__init__()
         self.sublayer1 = SubgraphNet_Layer(input_channels, hidden_channels)
         self.sublayer2 = SubgraphNet_Layer(hidden_channels * 2, hidden_channels)
@@ -49,7 +49,7 @@ class SubgraphNet(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_dim=128, num_heads=4):
+    def __init__(self, embed_dim=256, num_heads=4):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -73,7 +73,7 @@ class SelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, embed_dim=128, num_heads=4):
+    def __init__(self, embed_dim=256, num_heads=4):
         super().__init__()
         self.heads = num_heads
         self.to_qk = nn.Linear(embed_dim, embed_dim)
@@ -107,36 +107,45 @@ class CrossAttention(nn.Module):
         return x0, x1
 
 class TransformerLayer(nn.Module):
-    def __init__(self, embed_dim=128, num_heads=4):
+    def __init__(self, embed_dim=256, num_heads=4):
         super().__init__()
         self.self_attn = SelfAttention(embed_dim, num_heads)
         self.cross_attn = CrossAttention(embed_dim, num_heads)
 
     def forward(self, feature0, feature1):
-        feature0 = self.self_attn(feature0)
-        feature1 = self.self_attn(feature1)
+        # feature0 = self.self_attn(feature0)
+        # feature1 = self.self_attn(feature1)
         return self.cross_attn(feature0, feature1)
 
 
 class HdmapMatcher(nn.Module):
-    def __init__(self, input_channels=6, hidden_channels=64, num_layers=6, num_heads=4):
+    def __init__(self, num_layers=3, num_heads=4):
         super().__init__()
-        self.vector_net = SubgraphNet(input_channels, hidden_channels)
+        self.input_project= nn.Linear(5, 128)
+        self.input_embedding = nn.Linear(1, 128)
+        # self.vector_net = SubgraphNet(6, 128)
         self.transformers = nn.ModuleList(
-            [TransformerLayer(hidden_channels * 2, num_heads) for _ in range(num_layers)]
+            [TransformerLayer(256, num_heads) for _ in range(num_layers)]
         )
-        self.output_net = SubgraphNet(hidden_channels*2, hidden_channels)
+        self.output_net = SubgraphNet(256, 128)
         self.reg_branch = nn.Sequential(
-            nn.Linear(4 * hidden_channels, 4 * hidden_channels),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(4 * hidden_channels, 4 * hidden_channels),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(4 * hidden_channels, 3),
+            nn.Linear(256, 3),
         )
     
     def forward(self, perception_features, hdmap_features):
-        feature0 = self.vector_net(perception_features)
-        feature1 = self.vector_net(hdmap_features)
+        bs, n, p, d = perception_features.shape
+        perception_features = perception_features.view(bs, n*p, d)
+        bs, n, p, d = hdmap_features.shape
+        hdmap_features = hdmap_features.view(bs, n*p, d)
+
+        feature0 = torch.cat([self.input_project(perception_features[...,0:5]), 
+                             self.input_embedding(perception_features[...,5:6])], dim=-1)
+        feature1 = torch.cat([self.input_project(hdmap_features[...,0:5]), 
+                             self.input_embedding(hdmap_features[...,5:6])], dim=-1)
         for transformer in self.transformers:
             feature0, feature1 = transformer(feature0, feature1)
 

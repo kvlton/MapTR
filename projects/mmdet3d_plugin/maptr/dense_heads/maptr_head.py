@@ -45,6 +45,7 @@ def normalize_features(features, pc_range):
 def denormalize_translations(translations, pc_range):
     factor = max(pc_range)
     translations[...,0:2] *= factor
+    translations[...,2:3] *= 180.0
     return translations
     
 def denormalize_2d_bbox(bboxes, pc_range):
@@ -97,7 +98,9 @@ class MapTRHead(DETRHead):
                              loss_src_weight=1.0, 
                              loss_dst_weight=1.0),
                  loss_dir=dict(type='PtsDirCosLoss', loss_weight=2.0),
-                 loss_match=dict(type='SmoothL1Loss', loss_weight=1.0),
+                 loss_match_x=dict(type='SmoothL1Loss', loss_weight=1.0),
+                 loss_match_y=dict(type='SmoothL1Loss', loss_weight=1.0),
+                 loss_match_yaw=dict(type='SmoothL1Loss', loss_weight=1.0),
                  **kwargs):
 
         self.bev_h = bev_h
@@ -140,10 +143,12 @@ class MapTRHead(DETRHead):
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
-        self.hdmap_matcher = HdmapMatcher(6, 64, 3, 4)
+        self.hdmap_matcher = HdmapMatcher(1, 4)
         self.loss_pts = build_loss(loss_pts)
         self.loss_dir = build_loss(loss_dir)
-        self.loss_match = build_loss(loss_match)
+        self.loss_match_x = build_loss(loss_match_x)
+        self.loss_match_y = build_loss(loss_match_y)
+        self.loss_match_yaw = build_loss(loss_match_yaw)
         num_query = num_vec * num_pts_per_vec
         self.num_query = num_query
         self.num_vec = num_vec
@@ -756,10 +761,16 @@ class MapTRHead(DETRHead):
         loss_dict = dict()
         match_result = preds_dicts["hdmap_match_result"]
         hdmap_noises_3d = torch.stack(hdmap_noises_3d, dim=0)
-        loss_match = self.loss_match(match_result, hdmap_noises_3d)
+        loss_match_x = self.loss_match_x(match_result[...,0:1], hdmap_noises_3d[...,0:1])
+        loss_match_y = self.loss_match_y(match_result[...,1:2], hdmap_noises_3d[...,1:2])
+        loss_match_yaw = self.loss_match_yaw(match_result[...,2:3], hdmap_noises_3d[...,2:3])
         if digit_version(TORCH_VERSION) >= digit_version('1.8'):
-            loss_match = torch.nan_to_num(loss_match)
-        loss_dict['loss_match'] = loss_match
+            loss_match_x = torch.nan_to_num(loss_match_x)
+            loss_match_y = torch.nan_to_num(loss_match_y)
+            loss_match_yaw = torch.nan_to_num(loss_match_yaw)
+        loss_dict['loss_match_x'] = loss_match_x
+        loss_dict['loss_match_y'] = loss_match_y
+        loss_dict['loss_match_yaw'] = loss_match_yaw
         return loss_dict
         
 
@@ -893,10 +904,16 @@ class MapTRHead(DETRHead):
         # match loss for hdmap match
         match_result = preds_dicts["hdmap_match_result"]
         hdmap_noises_3d = torch.stack(hdmap_noises_3d, dim=0)
-        loss_match = self.loss_match(match_result, hdmap_noises_3d)
+        loss_match_x = self.loss_match_x(match_result[...,0:1], hdmap_noises_3d[...,0:1])
+        loss_match_y = self.loss_match_y(match_result[...,1:2], hdmap_noises_3d[...,1:2])
+        loss_match_yaw = self.loss_match_yaw(match_result[...,2:3], hdmap_noises_3d[...,2:3])
         if digit_version(TORCH_VERSION) >= digit_version('1.8'):
-            loss_match = torch.nan_to_num(loss_match)
-        loss_dict['loss_match'] = loss_match
+            loss_match_x = torch.nan_to_num(loss_match_x)
+            loss_match_y = torch.nan_to_num(loss_match_y)
+            loss_match_yaw = torch.nan_to_num(loss_match_yaw)
+        loss_dict['loss_match_x'] = loss_match_x
+        loss_dict['loss_match_y'] = loss_match_y
+        loss_dict['loss_match_yaw'] = loss_match_yaw
         return loss_dict
 
     @force_fp32(apply_to=('preds_dicts'))

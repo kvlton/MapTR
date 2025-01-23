@@ -379,6 +379,10 @@ class MapTR(MVXTwoStageDetector):
             for bboxes, scores, labels, pts in bbox_list
         ]
         # import pdb;pdb.set_trace()
+        bs = len(x)
+        for i in range(bs):
+            bbox_results[i]['hdmap_noises_3d'] = hdmap_noises_3d[i].to('cpu')
+            bbox_results[i]['hdmap_match_result'] = outs['hdmap_match_result'][i].to('cpu')
         return outs['bev_embed'], bbox_results
     def simple_test(self,
                     img_metas,

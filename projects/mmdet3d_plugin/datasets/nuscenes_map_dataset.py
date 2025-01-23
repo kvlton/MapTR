@@ -4,6 +4,7 @@ import numpy as np
 from mmdet.datasets import DATASETS
 from mmdet3d.datasets import NuScenesDataset
 import mmcv
+from mmcv.utils import print_log
 import os
 from os import path as osp
 from mmdet.datasets import DATASETS
@@ -940,6 +941,7 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
                  map_classes=None,
                  noise='None',
                  noise_std=0,
+                 hdmap_noise_range=[10.0, 10.0, 180.0],
                  *args, 
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -948,6 +950,7 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
         self.queue_length = queue_length
         self.overlap_test = overlap_test
         self.bev_size = bev_size
+        self.hdmap_noise_range = hdmap_noise_range
 
         self.MAPCLASSES = self.get_map_classes(map_classes)
         self.NUM_MAPCLASSES = len(self.MAPCLASSES)
@@ -1041,9 +1044,9 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
 
         # add hdmap noise for hdmap_match
         hdmap_noises_3d = torch.tensor([
-            torch.rand(1) * 10.0 - 5.0,
-            torch.rand(1) * 10.0 - 5.0,
-            torch.rand(1) * 10.0 - 5.0])
+            torch.rand(1) * self.hdmap_noise_range[0] * 2 - self.hdmap_noise_range[0],
+            torch.rand(1) * self.hdmap_noise_range[1] * 2 - self.hdmap_noise_range[1],
+            torch.rand(1) * self.hdmap_noise_range[2] * 2 - self.hdmap_noise_range[2]])
         example['hdmap_noises_3d'] = DC(hdmap_noises_3d, cpu_only=False)
         return example
 
@@ -1462,6 +1465,18 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
 
         return detail
 
+    def evaluate_matcher(self, results, logger):
+        deviation_list = []
+        for i in range(len(results)):
+            hdmap_noises_3d = results[i]['pts_bbox']['hdmap_noises_3d']
+            hdmap_match_result = results[i]['pts_bbox']['hdmap_match_result']
+            deviation = torch.abs(hdmap_noises_3d - hdmap_match_result)
+            deviation_list.append(deviation)
+        deviation_tensor = torch.stack(deviation_list, dim=0)
+        avg_deviation_tensorr = deviation_tensor.mean(dim=0)
+        print_log(f"match_loss_x: {avg_deviation_tensorr[0].item()}", logger=logger)
+        print_log(f"match_loss_y: {avg_deviation_tensorr[1].item()}", logger=logger)
+        print_log(f"match_loss_yaw: {avg_deviation_tensorr[2].item()}", logger=logger)
 
     def evaluate(self,
                  results,
@@ -1492,6 +1507,7 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
         Returns:
             dict[str, float]: Results of each evaluation metric.
         """
+        self.evaluate_matcher(results, logger)
         result_files, tmp_dir = self.format_results(results, jsonfile_prefix)
 
         if isinstance(result_files, dict):
@@ -1502,6 +1518,7 @@ class CustomNuScenesLocalMapDataset(CustomNuScenesDataset):
             results_dict.update(ret_dict)
         elif isinstance(result_files, str):
             results_dict = self._evaluate_single(result_files, metric=metric)
+
 
         if tmp_dir is not None:
             tmp_dir.cleanup()

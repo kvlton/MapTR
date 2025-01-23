@@ -3,8 +3,8 @@ import subprocess
 from os.path import dirname, join
  
 # 设置环境变量和参数
-config = "./projects/configs/maptr/maptr_tiny_r50_24e.py"
-checkpoint = "./work_dirs/maptr_tiny_r50_24e/latest.pth"
+config = "./projects/configs/matcher/matcher_tiny_r50_24e.py"
+checkpoint = "./work_dirs/matcher_tiny_r50_24e/latest.pth"
 gpus = "1"
 port = "29503"
  

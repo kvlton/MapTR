@@ -173,7 +173,9 @@ model = dict(
         loss_pts=dict(type='PtsL1Loss', 
                       loss_weight=0.0),
         loss_dir=dict(type='PtsDirCosLoss', loss_weight=0.0),
-        loss_match=dict(type='SmoothL1Loss', loss_weight=1.0)),
+        loss_match_x=dict(type='SmoothL1Loss', loss_weight=1.0),
+        loss_match_y=dict(type='SmoothL1Loss', loss_weight=1.0),
+        loss_match_yaw=dict(type='SmoothL1Loss', loss_weight=1.0)),
     # model training and testing settings
     train_cfg=dict(pts=dict(
         grid_size=[512, 512, 1],
@@ -226,6 +228,7 @@ test_pipeline = [
         ])
 ]
 
+hdmap_noise_range = [8.0, 8.0, 30.0]
 data = dict(
     samples_per_gpu=4,
     workers_per_gpu=4,
@@ -244,6 +247,7 @@ data = dict(
         eval_use_same_gt_sample_num_flag=eval_use_same_gt_sample_num_flag,
         padding_value=-10000,
         map_classes=map_classes,
+        hdmap_noise_range = hdmap_noise_range,
         queue_length=queue_length,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
@@ -258,6 +262,7 @@ data = dict(
              eval_use_same_gt_sample_num_flag=eval_use_same_gt_sample_num_flag,
              padding_value=-10000,
              map_classes=map_classes,
+             hdmap_noise_range = hdmap_noise_range,
              classes=class_names, modality=input_modality, samples_per_gpu=1),
     test=dict(type=dataset_type,
               data_root=data_root,
@@ -269,6 +274,7 @@ data = dict(
               eval_use_same_gt_sample_num_flag=eval_use_same_gt_sample_num_flag,
               padding_value=-10000,
               map_classes=map_classes,
+              hdmap_noise_range = hdmap_noise_range,
               classes=class_names, modality=input_modality),
     shuffler_sampler=dict(type='DistributedGroupSampler'),
     nonshuffler_sampler=dict(type='DistributedSampler')
@@ -305,5 +311,5 @@ log_config = dict(
         dict(type='TensorboardLoggerHook')
     ])
 fp16 = dict(loss_scale=512.)
-checkpoint_config = dict(interval=2)
+checkpoint_config = dict(interval=1)
 find_unused_parameters=True
