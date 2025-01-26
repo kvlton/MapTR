@@ -1,3 +1,4 @@
+import math
 import argparse
 import mmcv
 import os
@@ -205,7 +206,6 @@ def main():
     logger.info('BEGIN vis test dataset samples gt label & pred')
 
 
-
     bbox_results = []
     mask_results = []
     dataset = data_loader.dataset
@@ -268,77 +268,32 @@ def main():
         row_2_img=cv2.hconcat(row_2_list)
         cams_img = cv2.vconcat([row_1_img,row_2_img])
         cams_img_path = osp.join(sample_dir,'surroud_view.jpg')
-        cv2.imwrite(cams_img_path, cams_img,[cv2.IMWRITE_JPEG_QUALITY, 70])
+        # cv2.imwrite(cams_img_path, cams_img,[cv2.IMWRITE_JPEG_QUALITY, 70])
         
-        for vis_format in args.gt_format:
-            if vis_format == 'se_pts':
-                gt_line_points = gt_bboxes_3d[0].start_end_points
-                for gt_bbox_3d, gt_label_3d in zip(gt_line_points, gt_labels_3d[0]):
-                    pts = gt_bbox_3d.reshape(-1,2).numpy()
-                    x = np.array([pt[0] for pt in pts])
-                    y = np.array([pt[1] for pt in pts])
-                    plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
-            elif vis_format == 'bbox':
-                gt_lines_bbox = gt_bboxes_3d[0].bbox
-                for gt_bbox_3d, gt_label_3d in zip(gt_lines_bbox, gt_labels_3d[0]):
-                    gt_bbox_3d = gt_bbox_3d.numpy()
-                    xy = (gt_bbox_3d[0],gt_bbox_3d[1])
-                    width = gt_bbox_3d[2] - gt_bbox_3d[0]
-                    height = gt_bbox_3d[3] - gt_bbox_3d[1]
-                    # import pdb;pdb.set_trace()
-                    plt.gca().add_patch(Rectangle(xy,width,height,linewidth=0.4,edgecolor=colors_plt[gt_label_3d],facecolor='none'))
-                    # plt.Rectangle(xy, width, height,color=colors_plt[gt_label_3d])
-                # continue
-            elif vis_format == 'fixed_num_pts':
-                plt.figure(figsize=(2, 4))
-                plt.xlim(pc_range[0], pc_range[3])
-                plt.ylim(pc_range[1], pc_range[4])
-                plt.axis('off')
-                # gt_bboxes_3d[0].fixed_num=30 #TODO, this is a hack
-                gt_lines_fixed_num_pts = gt_bboxes_3d[0].fixed_num_sampled_points
-                for gt_bbox_3d, gt_label_3d in zip(gt_lines_fixed_num_pts, gt_labels_3d[0]):
-                    # import pdb;pdb.set_trace() 
-                    pts = gt_bbox_3d.numpy()
-                    x = np.array([pt[0] for pt in pts])
-                    y = np.array([pt[1] for pt in pts])
-                    # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
+        # visualize hdmap
+        plt.figure(figsize=(2, 4))
+        plt.xlim(pc_range[0], pc_range[3])
+        plt.ylim(pc_range[1], pc_range[4])
+        plt.axis('off')
+        # gt_bboxes_3d[0].fixed_num=30 #TODO, this is a hack
+        gt_lines_fixed_num_pts = gt_bboxes_3d[0].fixed_num_sampled_points
+        for gt_bbox_3d, gt_label_3d in zip(gt_lines_fixed_num_pts, gt_labels_3d[0]):
+            # import pdb;pdb.set_trace() 
+            pts = gt_bbox_3d.numpy()
+            x = np.array([pt[0] for pt in pts])
+            y = np.array([pt[1] for pt in pts])
+            # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
 
-                    
-                    plt.plot(x, y, color=colors_plt[gt_label_3d],linewidth=1,alpha=0.8,zorder=-1)
-                    plt.scatter(x, y, color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
-                    # plt.plot(x, y, color=colors_plt[gt_label_3d])
-                    # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
-                plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
+            
+            plt.plot(x, y, color=colors_plt[gt_label_3d],linewidth=1,alpha=0.8,zorder=-1)
+            plt.scatter(x, y, color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
+            # plt.plot(x, y, color=colors_plt[gt_label_3d])
+            # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
+        plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
 
-                gt_fixedpts_map_path = osp.join(sample_dir, 'GT_fixednum_pts_MAP.png')
-                plt.savefig(gt_fixedpts_map_path, bbox_inches='tight', format='png',dpi=1200)
-                plt.close()   
-            elif vis_format == 'polyline_pts':
-                plt.figure(figsize=(2, 4))
-                plt.xlim(pc_range[0], pc_range[3])
-                plt.ylim(pc_range[1], pc_range[4])
-                plt.axis('off')
-                gt_lines_instance = gt_bboxes_3d[0].instance_list
-                # import pdb;pdb.set_trace()
-                for gt_line_instance, gt_label_3d in zip(gt_lines_instance, gt_labels_3d[0]):
-                    pts = np.array(list(gt_line_instance.coords))
-                    x = np.array([pt[0] for pt in pts])
-                    y = np.array([pt[1] for pt in pts])
-                    
-                    # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
-
-                    # plt.plot(x, y, color=colors_plt[gt_label_3d])
-                    plt.plot(x, y, color=colors_plt[gt_label_3d],linewidth=1,alpha=0.8,zorder=-1)
-                    plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1,alpha=0.8,zorder=-1)
-                plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
-
-                gt_polyline_map_path = osp.join(sample_dir, 'GT_polyline_pts_MAP.png')
-                plt.savefig(gt_polyline_map_path, bbox_inches='tight', format='png',dpi=1200)
-                plt.close()           
-
-            else: 
-                logger.error(f'WRONG visformat for GT: {vis_format}')
-                raise ValueError(f'WRONG visformat for GT: {vis_format}')
+        gt_fixedpts_map_path = osp.join(sample_dir, 'GT_fixednum_pts_MAP.png')
+        plt.savefig(gt_fixedpts_map_path, bbox_inches='tight', format='png',dpi=1200)
+        plt.close()   
 
 
         # import pdb;pdb.set_trace()
@@ -377,15 +332,130 @@ def main():
             pred_score_3d = round(pred_score_3d, 2)
             s = str(pred_score_3d)
 
-
-
         plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
 
         map_path = osp.join(sample_dir, 'PRED_MAP_plot.png')
         plt.savefig(map_path, bbox_inches='tight', format='png',dpi=1200)
         plt.close()
 
+        # visualize perception in match_before
+        result_dic = result[0]['pts_bbox']
+        boxes_3d = result_dic['boxes_3d'] # bbox: xmin, ymin, xmax, ymax
+        scores_3d = result_dic['scores_3d']
+        labels_3d = result_dic['labels_3d']
+        pts_3d = result_dic['pts_3d']
+        keep = scores_3d > args.score_thresh
+
+        plt.figure(figsize=(2, 4))
+        plt.xlim(pc_range[0], pc_range[3])
+        plt.ylim(pc_range[1], pc_range[4])
+        plt.axis('off')
+        for pred_score_3d, pred_bbox_3d, pred_label_3d, pred_pts_3d in zip(scores_3d[keep], boxes_3d[keep],labels_3d[keep], pts_3d[keep]):
+
+            pred_pts_3d = pred_pts_3d.numpy()
+            pts_x = pred_pts_3d[:,0]
+            pts_y = pred_pts_3d[:,1]
+            # plt.plot(pts_x, pts_y, color=colors_plt[pred_label_3d],linewidth=1,alpha=0.8,zorder=-1)
+            plt.scatter(pts_x, pts_y, color=colors_plt[pred_label_3d],s=1,alpha=0.8,zorder=-1)
+
+
+            pred_bbox_3d = pred_bbox_3d.numpy()
+            xy = (pred_bbox_3d[0],pred_bbox_3d[1])
+            width = pred_bbox_3d[2] - pred_bbox_3d[0]
+            height = pred_bbox_3d[3] - pred_bbox_3d[1]
+            pred_score_3d = float(pred_score_3d)
+            pred_score_3d = round(pred_score_3d, 2)
+            s = str(pred_score_3d)
+
+        plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
+
+        # visualize hdmap in match_before
+        hdmap_noises_3d = result_dic['hdmap_noises_3d'].numpy()
+        hdmap_noises_3d[2] = math.radians(hdmap_noises_3d[2])
+        translation_vector = np.array([hdmap_noises_3d[0], hdmap_noises_3d[1]]).reshape(-1, 1)
+        rotation_matrix = np.array([
+            [np.cos(hdmap_noises_3d[2]), -np.sin(hdmap_noises_3d[2])],
+            [np.sin(hdmap_noises_3d[2]), np.cos(hdmap_noises_3d[2])]
+        ])
+        gt_lines_fixed_num_pts = gt_bboxes_3d[0].fixed_num_sampled_points
+        for gt_bbox_3d, gt_label_3d in zip(gt_lines_fixed_num_pts, gt_labels_3d[0]):
+            # import pdb;pdb.set_trace() 
+            pts = gt_bbox_3d.numpy()
+            x = np.array([pt[0] for pt in pts])
+            y = np.array([pt[1] for pt in pts])
+            trans_point = np.dot(rotation_matrix, np.vstack((x, y))) + translation_vector
+            # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
+
+            
+            plt.plot(trans_point[0], trans_point[1], color='black',linewidth=1,alpha=0.8,zorder=-1)
+            # plt.scatter(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
+            # plt.plot(x, y, color=colors_plt[gt_label_3d])
+            # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
+
+        map_path = osp.join(sample_dir, 'match_before.png')
+        plt.savefig(map_path, bbox_inches='tight', format='png',dpi=1200)
+        plt.close()
+
+        # visualize perception in match_after
+        result_dic = result[0]['pts_bbox']
+        boxes_3d = result_dic['boxes_3d'] # bbox: xmin, ymin, xmax, ymax
+        scores_3d = result_dic['scores_3d']
+        labels_3d = result_dic['labels_3d']
+        pts_3d = result_dic['pts_3d']
+        keep = scores_3d > args.score_thresh
+
+        plt.figure(figsize=(2, 4))
+        plt.xlim(pc_range[0], pc_range[3])
+        plt.ylim(pc_range[1], pc_range[4])
+        plt.axis('off')
+        for pred_score_3d, pred_bbox_3d, pred_label_3d, pred_pts_3d in zip(scores_3d[keep], boxes_3d[keep],labels_3d[keep], pts_3d[keep]):
+
+            pred_pts_3d = pred_pts_3d.numpy()
+            pts_x = pred_pts_3d[:,0]
+            pts_y = pred_pts_3d[:,1]
+            # plt.plot(pts_x, pts_y, color=colors_plt[pred_label_3d],linewidth=1,alpha=0.8,zorder=-1)
+            plt.scatter(pts_x, pts_y, color=colors_plt[pred_label_3d],s=1,alpha=0.8,zorder=-1)
+
+
+            pred_bbox_3d = pred_bbox_3d.numpy()
+            xy = (pred_bbox_3d[0],pred_bbox_3d[1])
+            width = pred_bbox_3d[2] - pred_bbox_3d[0]
+            height = pred_bbox_3d[3] - pred_bbox_3d[1]
+            pred_score_3d = float(pred_score_3d)
+            pred_score_3d = round(pred_score_3d, 2)
+            s = str(pred_score_3d)
+
+        plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
+
+        # visualize hdmap in match_after
+        hdmap_match_result = result_dic['hdmap_match_result'].numpy()
+        hdmap_match_result[2] = math.radians(hdmap_match_result[2])
+        hdmap_match_result = hdmap_noises_3d - hdmap_match_result
+        translation_vector = np.array([hdmap_match_result[0], hdmap_match_result[1]]).reshape(-1, 1)
+        rotation_matrix = np.array([
+            [np.cos(hdmap_match_result[2]), -np.sin(hdmap_match_result[2])],
+            [np.sin(hdmap_match_result[2]), np.cos(hdmap_match_result[2])]
+        ])
+        gt_lines_fixed_num_pts = gt_bboxes_3d[0].fixed_num_sampled_points
+        for gt_bbox_3d, gt_label_3d in zip(gt_lines_fixed_num_pts, gt_labels_3d[0]):
+            # import pdb;pdb.set_trace() 
+            pts = gt_bbox_3d.numpy()
+            x = np.array([pt[0] for pt in pts])
+            y = np.array([pt[1] for pt in pts])
+            trans_point = np.dot(rotation_matrix, np.vstack((x, y))) + translation_vector
+            # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
+
+            
+            plt.plot(trans_point[0], trans_point[1], color='black',linewidth=1,alpha=0.8,zorder=-1)
+            # plt.scatter(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
+            # plt.plot(x, y, color=colors_plt[gt_label_3d])
+            # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
+
+        map_path = osp.join(sample_dir, 'match_after.png')
+        plt.savefig(map_path, bbox_inches='tight', format='png',dpi=1200)
+        plt.close()
         
+
         prog_bar.update()
 
     logger.info('\n DONE vis test dataset samples gt label & pred')
