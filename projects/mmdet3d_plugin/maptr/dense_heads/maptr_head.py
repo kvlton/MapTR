@@ -38,13 +38,14 @@ def normalize_2d_pts(pts, pc_range):
     return normalized_pts
 
 def normalize_features(features, pc_range):
-    factor = max(pc_range)
-    features[...,0:4] /= factor
+    features[...,0:1] /= pc_range[3]
+    features[...,1:2] /= pc_range[4]
+    features[...,2:3] /= pc_range[3]
+    features[...,3:4] /= pc_range[4]
     return features
 
 def denormalize_translations(translations, pc_range):
-    factor = max(pc_range)
-    translations[...,0:2] *= factor
+    translations[...,0:2] *= 10.0
     translations[...,2:3] *= 180.0
     return translations
     
@@ -143,7 +144,7 @@ class MapTRHead(DETRHead):
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
-        self.hdmap_matcher = HdmapMatcher(1, 4)
+        self.hdmap_matcher = HdmapMatcher(9, 4)
         self.loss_pts = build_loss(loss_pts)
         self.loss_dir = build_loss(loss_dir)
         self.loss_match_x = build_loss(loss_match_x)

@@ -113,8 +113,8 @@ class TransformerLayer(nn.Module):
         self.cross_attn = CrossAttention(embed_dim, num_heads)
 
     def forward(self, feature0, feature1):
-        # feature0 = self.self_attn(feature0)
-        # feature1 = self.self_attn(feature1)
+        feature0 = self.self_attn(feature0)
+        feature1 = self.self_attn(feature1)
         return self.cross_attn(feature0, feature1)
 
 
@@ -130,9 +130,13 @@ class HdmapMatcher(nn.Module):
         self.output_net = SubgraphNet(256, 128)
         self.reg_branch = nn.Sequential(
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(256, 256),
-            nn.ReLU(),
+            nn.Tanh(),
+            nn.Linear(256, 256),
+            nn.Tanh(),
+            nn.Linear(256, 256),
+            nn.Tanh(),
             nn.Linear(256, 3),
         )
     
@@ -146,6 +150,9 @@ class HdmapMatcher(nn.Module):
                              self.input_embedding(perception_features[...,5:6])], dim=-1)
         feature1 = torch.cat([self.input_project(hdmap_features[...,0:5]), 
                              self.input_embedding(hdmap_features[...,5:6])], dim=-1)
+        
+        # feature0 = self.vector_net(perception_features)
+        # feature1 = self.vector_net(hdmap_features)
         for transformer in self.transformers:
             feature0, feature1 = transformer(feature0, feature1)
 

@@ -228,7 +228,7 @@ test_pipeline = [
         ])
 ]
 
-hdmap_noise_range = [8.0, 8.0, 30.0]
+hdmap_noise_range = [10.0, 10.0, 180.0]
 data = dict(
     samples_per_gpu=4,
     workers_per_gpu=4,
@@ -282,7 +282,7 @@ data = dict(
 
 optimizer = dict(
     type='AdamW',
-    lr=6e-4,
+    lr=2e-5,
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.1),
@@ -297,13 +297,14 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
-total_epochs = 24
+total_epochs = 12
 # total_epochs = 50
 # evaluation = dict(interval=1, pipeline=test_pipeline)
 evaluation = dict(interval=1, pipeline=test_pipeline, metric='chamfer')
 
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
-load_from = 'ckpts/maptr_tiny_r50_110e.pth'
+# load_from = 'ckpts/maptr_tiny_r50_110e.pth'
+resume_from = 'work_dirs/matcher_tiny_r50_24e/latest.pth'
 log_config = dict(
     interval=50,
     hooks=[

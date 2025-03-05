@@ -268,7 +268,7 @@ def main():
         row_2_img=cv2.hconcat(row_2_list)
         cams_img = cv2.vconcat([row_1_img,row_2_img])
         cams_img_path = osp.join(sample_dir,'surroud_view.jpg')
-        # cv2.imwrite(cams_img_path, cams_img,[cv2.IMWRITE_JPEG_QUALITY, 70])
+        cv2.imwrite(cams_img_path, cams_img,[cv2.IMWRITE_JPEG_QUALITY, 70])
         
         # visualize hdmap
         plt.figure(figsize=(2, 4))
@@ -320,7 +320,7 @@ def main():
             pred_pts_3d = pred_pts_3d.numpy()
             pts_x = pred_pts_3d[:,0]
             pts_y = pred_pts_3d[:,1]
-            plt.plot(pts_x, pts_y, color=colors_plt[pred_label_3d],linewidth=1,alpha=0.8,zorder=-1)
+            # plt.plot(pts_x, pts_y, color=colors_plt[pred_label_3d],linewidth=1,alpha=0.8,zorder=-1)
             plt.scatter(pts_x, pts_y, color=colors_plt[pred_label_3d],s=1,alpha=0.8,zorder=-1)
 
 
@@ -387,7 +387,7 @@ def main():
             # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
 
             
-            plt.plot(trans_point[0], trans_point[1], color='black',linewidth=1,alpha=0.8,zorder=-1)
+            plt.plot(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],linewidth=1,alpha=0.8,zorder=-1)
             # plt.scatter(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
             # plt.plot(x, y, color=colors_plt[gt_label_3d])
             # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
@@ -446,7 +446,7 @@ def main():
             # plt.quiver(x[:-1], y[:-1], x[1:] - x[:-1], y[1:] - y[:-1], scale_units='xy', angles='xy', scale=1, color=colors_plt[gt_label_3d])
 
             
-            plt.plot(trans_point[0], trans_point[1], color='black',linewidth=1,alpha=0.8,zorder=-1)
+            plt.plot(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],linewidth=1,alpha=0.8,zorder=-1)
             # plt.scatter(trans_point[0], trans_point[1], color=colors_plt[gt_label_3d],s=2,alpha=0.8,zorder=-1)
             # plt.plot(x, y, color=colors_plt[gt_label_3d])
             # plt.scatter(x, y, color=colors_plt[gt_label_3d],s=1)
